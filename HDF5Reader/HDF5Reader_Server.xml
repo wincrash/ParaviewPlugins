@@ -1,0 +1,29 @@
+<ServerManagerConfiguration>
+  <ProxyGroup name="sources">
+    <SourceProxy name="HDF5Reader" class="HDF5Reader" label="HDF5Reader reader (directory)">
+     <StringVectorProperty
+        name="FileName"
+        command="SetFileName"
+        number_of_elements="1">
+        <FileListDomain name="files"/>
+     </StringVectorProperty>
+     
+
+      <Hints>
+        <ReaderFactory extensions="h5"
+                       file_description="HDF5Reader Files (directory)" />
+      </Hints>
+           <!-- Send discrete time info to the animation panel -->
+     <DoubleVectorProperty
+       name="TimestepValues"
+       repeatable="1"
+       information_only="1">
+       <TimeStepsInformationHelper/>
+       <Documentation>
+         Available timestep values.
+       </Documentation>
+     </DoubleVectorProperty>
+   </SourceProxy>
+
+  </ProxyGroup>
+</ServerManagerConfiguration>	

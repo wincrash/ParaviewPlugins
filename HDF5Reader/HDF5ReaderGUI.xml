@@ -1,0 +1,5 @@
+<ParaViewReaders>
+  <Reader name="HDF5Reader" extensions="h5"
+	  file_description="HDF5Reader (.h5) Files">
+  </Reader>
+</ParaViewReaders>

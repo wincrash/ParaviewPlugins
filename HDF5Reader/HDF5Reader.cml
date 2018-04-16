@@ -1,0 +1,28 @@
+<ServerManagerConfiguration>
+  <ProxyGroup name="sources">
+    <!-- ================================================================== -->
+    <SourceProxy name="HDF5Reader" class="HDF5Reader" label="HDF5Reader">
+      <Documentation
+         long_help="Read a .h5 file."
+         short_help="Read a .h5 file.">
+      </Documentation>
+      <StringVectorProperty
+            name="FileName"
+            animateable="0"
+            command="SetFileName"
+            number_of_elements="1">
+        <FileListDomain name="files"/>
+        <Documentation>
+          This property specifies the file name for the PNG reader.
+        </Documentation>
+      </StringVectorProperty>
+ 
+      <Hints>
+        <ReaderFactory extensions="h5"
+                       file_description="HDF5Reader File Format" />
+     </Hints>
+    </SourceProxy>
+    <!-- End Reader -->
+  </ProxyGroup>
+  <!-- End Filters Group -->
+</ServerManagerConfiguration>
