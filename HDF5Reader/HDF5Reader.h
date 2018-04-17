@@ -43,6 +43,7 @@ private:
 
   vtkSmartPointer<vtkDoubleArray> times;
   vtkSmartPointer<vtkVariantArray> timesNames;
+      std::vector<std::string> filenames;
 
 
 };

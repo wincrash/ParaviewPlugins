@@ -8,7 +8,7 @@
 #include "vtkSmartPointer.h"
 #include "vtkVertexGlyphFilter.h"
  
-
+#include <algorithm>
 #include "hdf_wrapper.hpp"
 #include "vtkUnstructuredGrid.h"
 #include <iostream>
@@ -125,17 +125,22 @@ int HDF5Reader::RequestData(
  
   // Here is where you would read the data from the file. In this example,
   // we simply create a point.
- 
-
-std::cout<<"filename "<<FileName<<"\n";
+ std::cout<<"iddd "<<findClosestSolutionIndex(requestedTime)<<"\n";
+std::string tempFilename=filenames[findClosestSolutionIndex(requestedTime)];
+std::cout<<"filename "<<tempFilename<<"\n";
 
   //vtkSmartPointer<vtkPolyData> polydata = vtkSmartPointer<vtkPolyData>::New();
-  h5cpp::File file(FileName, "a");
+  h5cpp::File file(tempFilename, "a");
 
-  auto root = file.root();
-  auto gr = root.require_group(root.get_link_name(findClosestSolutionIndex(requestedTime)));
-  auto gr0=root.require_group(root.get_link_name(0));
+  auto gr = file.root();
+    h5cpp::File file1(filenames[findClosestSolutionIndex(0)], "a");
+
+  auto gr0 = file1.root();
+
+  //auto gr = root.require_group(root.get_link_name(findClosestSolutionIndex(requestedTime)));
+  //auto gr0=root.require_group(root.get_link_name(0));
   std::vector<double>oldPosition=GetData(gr0,"POSITIONS",4);
+  file1.close();
 
   std::vector<double> STEP;
   STEP.push_back(gr.attrs().get<int>("STEP"));
@@ -273,7 +278,21 @@ void HDF5Reader::PrintSelf(ostream& os, vtkIndent indent)
       << (this->FileName ? this->FileName : "(none)") << "\n";
 }
 
-
+std::vector<std::string> split(const std::string& str, const std::string& delim)
+{
+    std::vector<std::string> tokens;
+    size_t prev = 0, pos = 0;
+    do
+    {
+        pos = str.find(delim, prev);
+        if (pos == std::string::npos) pos = str.length();
+        std::string token = str.substr(prev, pos-prev);
+        if (!token.empty()) tokens.push_back(token);
+        prev = pos + delim.length();
+    }
+    while (pos < str.length() && prev < str.length());
+    return tokens;
+}
 
 int HDF5Reader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInformationVector **vtkNotUsed(inputVector), vtkInformationVector *outputVector)
 {
@@ -283,8 +302,31 @@ int HDF5Reader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInfor
       //this->SetErrorCode(vtkErrorCode::NoFileNameError);
       return 0;
       }
+    filenames.resize(0,"");
+    std::cout<<fs::path(FileName).parent_path();
 
-    h5cpp::File file(FileName, "a");
+    for(auto& p: fs::directory_iterator(fs::path(FileName).parent_path()))
+    {
+        if (p.path().string().find(".h5") != std::string::npos) {
+
+            filenames.push_back(p.path().string());
+        }
+    }
+    std::sort(filenames.begin(),filenames.end());
+
+    for (int i = 0; i < filenames.size(); i++) {
+            h5cpp::File file(FileName, "a");
+            auto root = file.root();
+            double time=root.attrs().get<double>("TIME");
+            std::cout<<time<<"\n";
+            this->timesNames->InsertNextValue(root.attrs().get<double>("TIME"));
+           // this->times->InsertNextValue(root.attrs().get<double>("TIME"));
+            this->times->InsertNextValue(i);
+            file.close();
+    }
+
+
+  /*  h5cpp::File file(FileName, "a");
     auto root = file.root();
 
     for (int i = 0; i < root.size(); i++) {
@@ -295,7 +337,7 @@ int HDF5Reader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInfor
     }
 
     file.close();
-
+*/
     vtkIdType nsteps = times->GetNumberOfTuples();
     double * trange = new double[2];
     trange[0]=times->GetValue(0);
@@ -312,9 +354,6 @@ int HDF5Reader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInfor
     //2do create a list of fields (in current time only?)
     //2do create a list of blocks i.e. patches,zones regions etc
 
-    std::cout<<fs::path(FileName).parent_path();
 
-    for(auto& p: fs::directory_iterator(fs::path(FileName).parent_path()))
-        std::cout << p << '\n';
     return 1;
 }
