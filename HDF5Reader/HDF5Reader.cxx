@@ -180,8 +180,8 @@ std::cout<<"filename "<<tempFilename<<"\n";
 
   data=GetData(gr,"VELOCITY",4);
   AddToVTKVector(pdata,data,"VELOCITY");
- data=GetData(gr,"ACCELERATION",4);
-  AddToVTKVector(output->GetPointData(),data,"ACCELERATION");
+ //data=GetData(gr,"ACCELERATION",4);
+  //AddToVTKVector(output->GetPointData(),data,"ACCELERATION");
   data=GetData(gr,"PARTICLE_MATERIAL",1);
   AddToVTKScalar(output->GetPointData(),data,"PARTICLE_MATERIAL");
   data=GetData(gr,"PARTICLE_TYPE",1);
@@ -190,8 +190,8 @@ std::cout<<"filename "<<tempFilename<<"\n";
   AddToVTKScalar(output->GetPointData(),data,"RADIUS");
   data=GetData(gr,"PARTICLE_FIX",1);
   AddToVTKScalar(output->GetPointData(),data,"PARTICLE_FIX");
-  data=GetData(gr,"PARTICLE_TYPE",1);
-  AddToVTKScalar(output->GetPointData(),data,"PARTICLE_TYPE");
+  //data=GetData(gr,"PARTICLE_TYPE",1);
+  //AddToVTKScalar(output->GetPointData(),data,"PARTICLE_TYPE");
 
   if(gr.exists("BOND_PARTICLE_1") &&gr.exists("BOND_PARTICLE_2")){
       data=GetData(gr,"BOND_STATE",1);
