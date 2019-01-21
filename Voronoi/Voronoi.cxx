@@ -115,7 +115,9 @@ vtkSmartPointer<vtkUnstructuredGrid> OutputPolydata = vtkSmartPointer<vtkUnstruc
 
 
    double * bounds=input->GetBounds();
-   double R=0.0005;
+
+   double *maxr=input->GetPointData()->GetArray("RADIUS")->GetRange();
+   double R=maxr[1];
     bounds[0]=bounds[0]-R;
     bounds[1]=bounds[1]+R;
 
@@ -125,10 +127,10 @@ vtkSmartPointer<vtkUnstructuredGrid> OutputPolydata = vtkSmartPointer<vtkUnstruc
     bounds[4]=bounds[4]-R;
     bounds[5]=bounds[5]+R;
 
- container c(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], 8, 8, 8, false, false, false, 8);
+ container_poly c(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], 8, 8, 8, false, false, false, 8);
   cele3d *faces = new cele3d[input->GetNumberOfPoints()];
   for (int i = 0; i < input->GetNumberOfPoints(); ++i) {
-      c.put(i,input->GetPoint(i)[0],input->GetPoint(i)[1],input->GetPoint(i)[2]);
+      c.put(i,input->GetPoint(i)[0],input->GetPoint(i)[1],input->GetPoint(i)[2],input->GetPointData()->GetArray("RADIUS")->GetTuple1(i));
       faces[i].nrfaces = 0;
       faces[i].id = i;
       faces[i].nrvertext = 0;
