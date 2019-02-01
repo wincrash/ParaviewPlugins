@@ -88,7 +88,7 @@ void AddToVTKVector(auto *location,std::vector<double>&array,std::string name)
             data->SetTuple3(ii, array[ii*4],array[ii*4+1],array[ii*4+2]);
         }
         location->AddArray(data);
-        data->Delete();
+        data->Delete();        
     }
 }
 
@@ -151,7 +151,56 @@ int HDF5Reader::RequestData(
     h5cpp::File file(tempFilename, "r");
     auto gr = file.root();
 
+   h5cpp::iterator it=gr.begin();
+   std::vector<std::string> pavadinimai;
+   std::vector<int> rankas;
+   while(it!=gr.end())
+   {
+       if(it.dereference().compare("POSITIONS")==0)
+       {
+           it++;
+           continue;
+       }
 
+       if(it.dereference().compare("BOUNDARY_FORCE")==0)
+       {
+           it++;
+           continue;
+       }
+
+       if(it.dereference().compare("BOUNDARY_FORCE")==0)
+       {
+           it++;
+           continue;
+       }
+       if(it.dereference().compare("BOUNDARY_POINTS")==0)
+       {
+           it++;
+           continue;
+       }
+       if(it.dereference().compare("BOUNDARY_VELOCITY")==0)
+       {
+           it++;
+           continue;
+       }
+       if(it.dereference().compare("BOUNDARY_IDS")==0)
+       {
+           it++;
+           continue;
+       }
+       if(it.dereference().compare("UNIQUE_RADIUS")==0)
+       {
+           it++;
+           continue;
+       }
+       pavadinimai.push_back(it.dereference());
+
+       std::cout<<it.dereference()<<"\n";
+       auto dt = gr.open_dataset(it.dereference());
+       rankas.push_back(dt.get_dataspace().get_rank());
+
+       it++;
+   }
 
     std::vector<double> STEP;
     STEP.push_back(gr.attrs().get<int>("STEP"));
@@ -190,6 +239,31 @@ int HDF5Reader::RequestData(
     data=GetData(gr,"UNIQUE_RADIUS",1);
     AddToVTKScalar(fdata,data,"UNIQUE_RADIUS");
 
+
+    for(int i=0;i<pavadinimai.size();i++)
+    {
+        if(rankas[i]==2)
+        {
+            data=GetData(gr,pavadinimai[i],4);
+            if(data.size()==POSITIONS.size())
+                AddToVTKVector(pdata,data,pavadinimai[i]);
+            else
+                AddToVTKVector(cdata,data,pavadinimai[i]);
+            std::cout<<"Added vector array "<<pavadinimai[i]<<" \n";
+        }
+        if(rankas[i]==1)
+        {
+            data=GetData(gr,pavadinimai[i],1);
+            if(data.size()==(POSITIONS.size()/4))
+                AddToVTKScalar(pdata,data,pavadinimai[i]);
+            else
+                AddToVTKScalar(cdata,data,pavadinimai[i]);
+
+            std::cout<<"Added scalar array "<<pavadinimai[i]<<" \n";
+        }
+    }
+
+/*
     data=GetData(gr,"FORCE",4);
     AddToVTKVector(pdata,data,"FORCE");
 
@@ -230,9 +304,9 @@ int HDF5Reader::RequestData(
 
     data=GetData(gr,"WALL_NN_COUNTAS",1);
     AddToVTKScalar(output->GetPointData(),data,"WALL_NN_COUNTAS");
-
+*/
     if(gr.exists("BOND_PARTICLE_1") &&gr.exists("BOND_PARTICLE_2")){
-        data=GetData(gr,"BOND_STATE",1);
+  /*      data=GetData(gr,"BOND_STATE",1);
         AddToVTKScalar(cdata,data,"BOND_STATE");
 
         data=GetData(gr,"BOND_F_LIMIT_N",1);
@@ -255,7 +329,7 @@ int HDF5Reader::RequestData(
 
         data=GetData(gr,"F_T_COMPRESSION",4);
         AddToVTKVector(cdata,data,"F_T_COMPRESSION");
-
+*/
 
 
         std::vector<double> particle1=GetData(gr,"BOND_PARTICLE_1",1);
@@ -285,6 +359,14 @@ int HDF5Reader::RequestData(
         output->SetVerts(verts);
         verts->Delete();
 
+    }
+    if(output->GetPointData()->HasArray("RADIUS"))
+    {
+        output->GetPointData()->SetActiveScalars("RADIUS");
+    }
+    if(output->GetPointData()->HasArray("VELOCITY"))
+    {
+        output->GetPointData()->SetActiveVectors("VELOCITY");
     }
     points->Delete();
 
