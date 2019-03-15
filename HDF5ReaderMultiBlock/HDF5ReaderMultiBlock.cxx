@@ -326,15 +326,15 @@ int HDF5ReaderMultiBlock::RequestData(
 
         for(int i=0;i<IDS.size()/4;i++)
         {
-            /*if(IDS[i*4+3]>=0)
+            if(IDS[i*4+3]<1000000)
             {
                 bcells->InsertNextCell(4);
                 bcells->InsertCellPoint(IDS[i*4+0]);
                 bcells->InsertCellPoint(IDS[i*4+1]);
                 bcells->InsertCellPoint(IDS[i*4+2]);
                 bcells->InsertCellPoint(IDS[i*4+3]);
-            }*/
-          //  else
+            }
+            else
             {
                 bcells->InsertNextCell(3);
                 bcells->InsertCellPoint(IDS[i*4+0]);
