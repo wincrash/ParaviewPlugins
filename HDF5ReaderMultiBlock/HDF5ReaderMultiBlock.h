@@ -1,18 +1,21 @@
 #ifndef __HDF5ReaderMultiBlock_h
 #define __HDF5ReaderMultiBlock_h
 
-#include "vtkPolyDataAlgorithm.h"
+#include "vtkMultiBlockDataSetAlgorithm.h"
 #include <vtksys/RegularExpression.hxx>
 #include <vtksys/SystemTools.hxx>
+#include <vtkSmartPointer.h>
+#include <vtkDoubleArray.h>
+#include <vtkVariantArray.h>
 #include <map>
-#include "vtkPolyDataAlgorithm.h"
 
 
 
-class HDF5ReaderMultiBlock : public vtkPolyDataAlgorithm
+
+class HDF5ReaderMultiBlock : public vtkMultiBlockDataSetAlgorithm
 {
 public:
-    vtkTypeMacro(HDF5ReaderMultiBlock,vtkPolyDataAlgorithm);
+    vtkTypeMacro(HDF5ReaderMultiBlock,vtkMultiBlockDataSetAlgorithm);
     void PrintSelf(ostream& os, vtkIndent indent);
 
     static HDF5ReaderMultiBlock *New();

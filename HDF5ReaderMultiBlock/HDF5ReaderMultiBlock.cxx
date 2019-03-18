@@ -30,6 +30,7 @@
 #include <vtkMultiBlockDataSet.h>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/lexical_cast.hpp>
+
 namespace fs = std::experimental::filesystem;
 vtkIdType HDF5ReaderMultiBlock::findClosestSolutionIndex(double Time)
 {
@@ -113,7 +114,7 @@ HDF5ReaderMultiBlock::HDF5ReaderMultiBlock()
     this->FileName = NULL;
     this->DirectoryName = NULL;
     this->SetNumberOfInputPorts(0);
-    this->SetNumberOfOutputPorts(2);
+    this->SetNumberOfOutputPorts(1);
     this->times = vtkSmartPointer<vtkDoubleArray>::New();
     this->timesNames = vtkSmartPointer<vtkVariantArray>::New();
 }
@@ -125,17 +126,18 @@ int HDF5ReaderMultiBlock::RequestData(
 {
 
     vtkInformation *outInfo = outputVector->GetInformationObject(0);
-    vtkInformation *outInfo1 = outputVector->GetInformationObject(1);
+
     double requestedTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
     std::cout<<"  "<<findClosestSolutionIndex(requestedTime)<<"\n";
 
 
 
     // get the ouptut
-    vtkPolyData *output = vtkPolyData::SafeDownCast(
+    vtkMultiBlockDataSet*outputas=vtkMultiBlockDataSet::SafeDownCast(
                 outInfo->Get(vtkDataObject::DATA_OBJECT()));
-    vtkPolyData *outputMesh = vtkPolyData::SafeDownCast(
-                outInfo1->Get(vtkDataObject::DATA_OBJECT()));
+
+    vtkPolyData *output = vtkPolyData::New();
+    vtkPolyData *outputMesh= vtkPolyData::New();
 
 
     // Here is where you would read the data from the file. In this example,
@@ -312,7 +314,7 @@ int HDF5ReaderMultiBlock::RequestData(
         output->GetPointData()->SetActiveVectors("VELOCITY");
     }
     points->Delete();
- //   outputBlock->SetBlock(0,output);
+    outputas->SetBlock(0,output);
 
     if(gr.exists("BOUNDARY_IDS") &&gr.exists("BOUNDARY_POINTS")){
 
@@ -355,7 +357,7 @@ int HDF5ReaderMultiBlock::RequestData(
         AddToVTKScalar(bcdata,data,"BOUNDARY_TEMPERATURE");
         data=GetData(gr,"BOUNDARY_FORCE",1);
         AddToVTKScalar(bcdata,data,"BOUNDARY_FORCE");
-        //outputBlock->SetBlock(1,bpoly);
+        outputas->SetBlock(1,outputMesh);
 
     }
 
