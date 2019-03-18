@@ -113,7 +113,7 @@ HDF5ReaderMultiBlock::HDF5ReaderMultiBlock()
     this->FileName = NULL;
     this->DirectoryName = NULL;
     this->SetNumberOfInputPorts(0);
-    this->SetNumberOfOutputPorts(1);
+    this->SetNumberOfOutputPorts(2);
     this->times = vtkSmartPointer<vtkDoubleArray>::New();
     this->timesNames = vtkSmartPointer<vtkVariantArray>::New();
 }
@@ -125,15 +125,18 @@ int HDF5ReaderMultiBlock::RequestData(
 {
 
     vtkInformation *outInfo = outputVector->GetInformationObject(0);
+    vtkInformation *outInfo1 = outputVector->GetInformationObject(1);
     double requestedTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
     std::cout<<"  "<<findClosestSolutionIndex(requestedTime)<<"\n";
 
 
 
     // get the ouptut
-    vtkMultiBlockDataSet *outputBlock = vtkMultiBlockDataSet::SafeDownCast(
+    vtkPolyData *output = vtkPolyData::SafeDownCast(
                 outInfo->Get(vtkDataObject::DATA_OBJECT()));
-    vtkPolyData* output=vtkPolyData::New();
+    vtkPolyData *outputMesh = vtkPolyData::SafeDownCast(
+                outInfo1->Get(vtkDataObject::DATA_OBJECT()));
+
 
     // Here is where you would read the data from the file. In this example,
     // we simply create a point.
@@ -309,7 +312,7 @@ int HDF5ReaderMultiBlock::RequestData(
         output->GetPointData()->SetActiveVectors("VELOCITY");
     }
     points->Delete();
-    outputBlock->SetBlock(0,output);
+ //   outputBlock->SetBlock(0,output);
 
     if(gr.exists("BOUNDARY_IDS") &&gr.exists("BOUNDARY_POINTS")){
 
@@ -342,15 +345,17 @@ int HDF5ReaderMultiBlock::RequestData(
                 bcells->InsertCellPoint(IDS[i*4+2]);
             }
         }
-        vtkPolyData* bpoly=vtkPolyData::New();
-        bpoly->SetPoints(bpoints);
-        bpoly->SetPolys(bcells);
 
-        vtkCellData* bcdata = bpoly->GetCellData();
-        vtkFieldData* bfdata = bpoly->GetFieldData();
+        outputMesh->SetPoints(bpoints);
+        outputMesh->SetPolys(bcells);
+
+        vtkCellData* bcdata = outputMesh->GetCellData();
+        vtkFieldData* bfdata = outputMesh->GetFieldData();
         data=GetData(gr,"BOUNDARY_TEMPERATURE",1);
         AddToVTKScalar(bcdata,data,"BOUNDARY_TEMPERATURE");
-        outputBlock->SetBlock(1,bpoly);
+        data=GetData(gr,"BOUNDARY_FORCE",1);
+        AddToVTKScalar(bcdata,data,"BOUNDARY_FORCE");
+        //outputBlock->SetBlock(1,bpoly);
 
     }
 

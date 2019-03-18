@@ -5,13 +5,14 @@
 #include <vtksys/RegularExpression.hxx>
 #include <vtksys/SystemTools.hxx>
 #include <map>
-#include "vtkMultiBlockDataSetAlgorithm.h"
+#include "vtkPolyDataAlgorithm.h"
 
 
-class HDF5ReaderMultiBlock : public vtkMultiBlockDataSetAlgorithm
+
+class HDF5ReaderMultiBlock : public vtkPolyDataAlgorithm
 {
 public:
-    vtkTypeMacro(HDF5ReaderMultiBlock,vtkMultiBlockDataSetAlgorithm);
+    vtkTypeMacro(HDF5ReaderMultiBlock,vtkPolyDataAlgorithm);
     void PrintSelf(ostream& os, vtkIndent indent);
 
     static HDF5ReaderMultiBlock *New();
