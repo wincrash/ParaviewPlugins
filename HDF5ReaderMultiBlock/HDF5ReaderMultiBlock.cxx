@@ -315,6 +315,7 @@ int HDF5ReaderMultiBlock::RequestData(
     }
     points->Delete();
     outputas->SetBlock(0,output);
+    output->Delete();
 
     if(gr.exists("BOUNDARY_IDS") &&gr.exists("BOUNDARY_POINTS")){
 
@@ -350,14 +351,16 @@ int HDF5ReaderMultiBlock::RequestData(
 
         outputMesh->SetPoints(bpoints);
         outputMesh->SetPolys(bcells);
+        bpoints->Delete();
+        bcells->Delete();
 
         vtkCellData* bcdata = outputMesh->GetCellData();
-        vtkFieldData* bfdata = outputMesh->GetFieldData();
         data=GetData(gr,"BOUNDARY_TEMPERATURE",1);
         AddToVTKScalar(bcdata,data,"BOUNDARY_TEMPERATURE");
         data=GetData(gr,"BOUNDARY_FORCE",1);
         AddToVTKScalar(bcdata,data,"BOUNDARY_FORCE");
         outputas->SetBlock(1,outputMesh);
+        outputMesh->Delete();
 
     }
 
