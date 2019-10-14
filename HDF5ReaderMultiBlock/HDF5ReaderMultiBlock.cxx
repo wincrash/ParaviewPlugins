@@ -30,7 +30,8 @@
 #include <vtkMultiBlockDataSet.h>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/lexical_cast.hpp>
-
+#include <vtkPolyData.h>
+#include <vtkPolyDataAlgorithm.h>
 namespace fs = std::experimental::filesystem;
 vtkIdType HDF5ReaderMultiBlock::findClosestSolutionIndex(double Time)
 {
@@ -62,7 +63,7 @@ std::vector<double> GetData(h5cpp::Group &gr, std::string NAME,int kiekis)
     }
     return data;
 }
-void AddToVTKScalar(auto *location,std::vector<double>&array,std::string name)
+void AddToVTKScalar(vtkFieldData *location,std::vector<double>&array,std::string name)
 {
     if(array.size()>0)
     {
@@ -80,7 +81,7 @@ void AddToVTKScalar(auto *location,std::vector<double>&array,std::string name)
     }
 }
 
-void AddToVTKVector(auto *location,std::vector<double>&array,std::string name)
+void AddToVTKVector(vtkFieldData *location,std::vector<double>&array,std::string name)
 {
     if(array.size()>0)
     {
@@ -114,7 +115,7 @@ HDF5ReaderMultiBlock::HDF5ReaderMultiBlock()
     this->FileName = NULL;
     this->DirectoryName = NULL;
     this->SetNumberOfInputPorts(0);
-    this->SetNumberOfOutputPorts(1);
+    this->SetNumberOfOutputPorts(2);
     this->times = vtkSmartPointer<vtkDoubleArray>::New();
     this->timesNames = vtkSmartPointer<vtkVariantArray>::New();
 }
@@ -126,19 +127,21 @@ int HDF5ReaderMultiBlock::RequestData(
 {
 
     vtkInformation *outInfo = outputVector->GetInformationObject(0);
+    vtkInformation *outInfo1 = outputVector->GetInformationObject(1);
+
 
     double requestedTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
     std::cout<<"  "<<findClosestSolutionIndex(requestedTime)<<"\n";
 
+    double requestedTime1 = outInfo1->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+    std::cout<<"  "<<findClosestSolutionIndex(requestedTime1)<<"\n";
 
 
-    // get the ouptut
-    vtkMultiBlockDataSet*outputas=vtkMultiBlockDataSet::SafeDownCast(
+    vtkPolyData *output = vtkPolyData::SafeDownCast(
                 outInfo->Get(vtkDataObject::DATA_OBJECT()));
-
-    vtkPolyData *output = vtkPolyData::New();
-    vtkPolyData *outputMesh= vtkPolyData::New();
-
+    vtkPolyData *outputMesh= vtkPolyData::SafeDownCast(
+                outInfo1->Get(vtkDataObject::DATA_OBJECT()));
+    outputMesh->Modified();
 
     // Here is where you would read the data from the file. In this example,
     // we simply create a point.
@@ -187,8 +190,13 @@ int HDF5ReaderMultiBlock::RequestData(
 
     std::vector<double> STEP;
     STEP.push_back(gr.attrs().get<int>("STEP"));
-    std::vector<double> TIME;
+    std::vector<double> TIME;    
     TIME.push_back(gr.attrs().get<double>("TIME"));
+    std::vector<double> TIME_TEMPERATURE;
+    if(gr.attrs().exists("TIME_TEMPERATURE"))
+    {
+        TIME_TEMPERATURE.push_back(gr.attrs().get<double>("TIME_TEMPERATURE"));
+    }
     //vtkPolyData*output = vtkPolyData::New();
     vtkPoints*points = vtkPoints::New();
     std::vector<double> POSITIONS=GetData(gr,"POSITIONS",4);
@@ -215,6 +223,8 @@ int HDF5ReaderMultiBlock::RequestData(
 
     AddToVTKScalar(fdata,STEP,"STEP");
     AddToVTKScalar(fdata,TIME,"TIME");
+    AddToVTKScalar(fdata,TIME_TEMPERATURE,"TIME_TEMPERATURE");
+
 
 
 
@@ -265,6 +275,59 @@ int HDF5ReaderMultiBlock::RequestData(
     }
 
     if(gr.exists("BOND_PARTICLE_1") &&gr.exists("BOND_PARTICLE_2")){
+
+        std::vector<double> particle1=GetData(gr,"BOND_PARTICLE_1",1);
+        std::vector<double> particle2=GetData(gr,"BOND_PARTICLE_2",1);
+
+        for(int i=0;i<pavadinimai.size();i++)
+        {
+
+            try {
+                if (!boost::starts_with(pavadinimai[i], "BOND_"))
+                    continue;
+                //foo_value = boost::lexical_cast<int>(argv[1]+6);
+            } catch (boost::bad_lexical_cast) {
+                // bad parameter
+            }
+
+            try {
+                if (boost::starts_with(pavadinimai[i], "BOND_PARTICLE_1"))
+                    continue;
+                //foo_value = boost::lexical_cast<int>(argv[1]+6);
+            } catch (boost::bad_lexical_cast) {
+                // bad parameter
+            }
+            try {
+                if (boost::starts_with(pavadinimai[i], "BOND_PARTICLE_2"))
+                    continue;
+                //foo_value = boost::lexical_cast<int>(argv[1]+6);
+            } catch (boost::bad_lexical_cast) {
+                // bad parameter
+            }
+
+
+            if(rankas[i]==2)
+            {
+                data=GetData(gr,pavadinimai[i],4);
+                if(data.size()==particle1.size()*4)
+                    AddToVTKVector(cdata,data,pavadinimai[i]);
+                std::cout<<"Added vector array "<<pavadinimai[i]<<" \n";
+            }
+            if(rankas[i]==1)
+            {
+                data=GetData(gr,pavadinimai[i],1);
+                if(data.size()==particle1.size())
+                    AddToVTKScalar(cdata,data,pavadinimai[i]);
+
+                std::cout<<"Added scalar array "<<pavadinimai[i]<<" \n";
+            }
+        }
+
+
+
+
+       /*
+
         data=GetData(gr,"BOND_STATE",1);
         AddToVTKScalar(cdata,data,"BOND_STATE");
 
@@ -277,9 +340,17 @@ int HDF5ReaderMultiBlock::RequestData(
         data=GetData(gr,"BOND_COUNT",1);
         AddToVTKScalar(pdata,data,"BOND_COUNT");
 
-        std::vector<double> particle1=GetData(gr,"BOND_PARTICLE_1",1);
-        std::vector<double> particle2=GetData(gr,"BOND_PARTICLE_2",1);
+        data=GetData(gr,"BOND_TYPE",1);
+        AddToVTKScalar(cdata,data,"BOND_TYPE");
+        data=GetData(gr,"BOND_AREA",1);
+        AddToVTKScalar(cdata,data,"BOND_AREA");
+*/
+
+
         vtkCellArray*lines=vtkCellArray::New();
+        std::vector<int> CellsInParticles;
+        CellsInParticles.resize(points->GetNumberOfPoints(),0);
+
         for(int i=0;i<particle1.size();i++)
         {
             lines->InsertNextCell(2);
@@ -288,8 +359,32 @@ int HDF5ReaderMultiBlock::RequestData(
 
             lines->InsertCellPoint(id1);
             lines->InsertCellPoint(id2);
+            CellsInParticles[id1]++;
+            CellsInParticles[id2]++;
+        }
+
+        for(int i=0;i<CellsInParticles.size();i++)
+        {
+            if(CellsInParticles[i]==0)
+            {
+                lines->InsertNextCell(2);
+                lines->InsertCellPoint(i);
+                lines->InsertCellPoint(i);
+                for(int k=0;k<output->GetCellData()->GetNumberOfArrays();k++)
+                {
+                    if(output->GetCellData()->GetArray(k)->GetNumberOfComponents()==1)
+                    output->GetCellData()->GetArray(k)->InsertNextTuple1(0);
+                    if(output->GetCellData()->GetArray(k)->GetNumberOfComponents()==3)
+                    output->GetCellData()->GetArray(k)->InsertNextTuple3(0,0,0);
+                }
+
+            }
         }
         output->SetLines(lines);
+        /*output->SetLines(lines);
+        vtkCellArray*verts=vtkCellArray::New();
+
+        output->SetVerts(verts);*/
         lines->Delete();
 
     }else
@@ -314,8 +409,6 @@ int HDF5ReaderMultiBlock::RequestData(
         output->GetPointData()->SetActiveVectors("VELOCITY");
     }
     points->Delete();
-    outputas->SetBlock(0,output);
-    output->Delete();
 
     if(gr.exists("BOUNDARY_IDS") &&gr.exists("BOUNDARY_POINTS")){
 
@@ -332,7 +425,7 @@ int HDF5ReaderMultiBlock::RequestData(
 
         for(int i=0;i<IDS.size()/4;i++)
         {
-            if(IDS[i*4+3]<1000000)
+           /* if(IDS[i*4+3]<1000000)
             {
                 bcells->InsertNextCell(4);
                 bcells->InsertCellPoint(IDS[i*4+0]);
@@ -340,7 +433,7 @@ int HDF5ReaderMultiBlock::RequestData(
                 bcells->InsertCellPoint(IDS[i*4+2]);
                 bcells->InsertCellPoint(IDS[i*4+3]);
             }
-            else
+            else*/
             {
                 bcells->InsertNextCell(3);
                 bcells->InsertCellPoint(IDS[i*4+0]);
@@ -359,8 +452,10 @@ int HDF5ReaderMultiBlock::RequestData(
         AddToVTKScalar(bcdata,data,"BOUNDARY_TEMPERATURE");
         data=GetData(gr,"BOUNDARY_FORCE",1);
         AddToVTKScalar(bcdata,data,"BOUNDARY_FORCE");
-        outputas->SetBlock(1,outputMesh);
-        outputMesh->Delete();
+
+
+        data=GetData(gr,"BOUNDARY_VELOCITY",4);
+        AddToVTKVector(bcdata,data,"BOUNDARY_VELOCITY");
 
     }
 
@@ -429,6 +524,15 @@ int HDF5ReaderMultiBlock::RequestInformation(vtkInformation *vtkNotUsed(request)
                 times->GetPointer(0), nsteps
                 );
     outInfo->Set(
+                vtkStreamingDemandDrivenPipeline::TIME_RANGE(),
+                trange,2);
+
+    vtkInformation * outInfo1 = outputVector->GetInformationObject(1);
+    outInfo1->Set(
+                vtkStreamingDemandDrivenPipeline::TIME_STEPS(),
+                times->GetPointer(0), nsteps
+                );
+    outInfo1->Set(
                 vtkStreamingDemandDrivenPipeline::TIME_RANGE(),
                 trange,2);
 

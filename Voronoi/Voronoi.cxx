@@ -10,6 +10,7 @@
 #include "vtkDataArray.h"
 #include "vtkDoubleArray.h"
 #include "Voronoi.h"
+#include "vtkPolygon.h"
 
 
 vtkStandardNewMacro(Voronoi);
@@ -108,10 +109,9 @@ int Voronoi::RequestData(vtkInformation *vtkNotUsed(request),
 //  vtkPolyData *input = vtkPolyData::SafeDownCast(
   vtkDataSet *input = vtkDataSet::SafeDownCast(
                                                inInfo->Get(vtkDataObject::DATA_OBJECT()));
-  vtkUnstructuredGrid *output = vtkUnstructuredGrid::SafeDownCast(
+  vtkPolyData *output = vtkPolyData::SafeDownCast(
                                                   outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-vtkSmartPointer<vtkUnstructuredGrid> OutputPolydata = vtkSmartPointer<vtkUnstructuredGrid>::New();
 
 
    double * bounds=input->GetBounds();
@@ -140,77 +140,68 @@ vtkSmartPointer<vtkUnstructuredGrid> OutputPolydata = vtkSmartPointer<vtkUnstruc
 
 
 
-std::vector<vtkDoubleArray*> arrays;
-for(int i=0;i<input->GetPointData()->GetNumberOfArrays();i++)
-{
-    arrays.push_back(vtkDoubleArray::New());
-    arrays[i]->SetName(input->GetPointData()->GetArray(i)->GetName());
-    arrays[i]->SetNumberOfComponents(input->GetPointData()->GetArray(i)->GetNumberOfComponents());
-    arrays[i]->SetNumberOfTuples(input->GetPointData()->GetArray(i)->GetNumberOfTuples());
-}
-
-
-
-OutputPolydata->Allocate(1,1);
 
 
   vtkSmartPointer<vtkPoints> points=vtkSmartPointer<vtkPoints>::New();
-
-  for(int i=0;i<input->GetNumberOfPoints();i++)
-  {
-      for(int h=0;h<arrays.size();h++)
-      {
-          if(arrays[h]->GetNumberOfComponents()==1)
-          {
-              arrays[h]->SetTuple1(i,input->GetPointData()->GetArray(h)->GetTuple1(i));
-            //  double val=input->GetPointData()->GetArray(h)->GetTuple1(i);
-             // std::cout<<val<<"\n";
-            //arrays[h]->SetTuple1(i,val);
-          }else
-          {
-              double*vals=input->GetPointData()->GetArray(h)->GetTuple3(i);
-              arrays[h]->SetTuple3(i,vals[0],vals[1],vals[2]);
-          }
-
-      }
-
-       int start=points->GetNumberOfPoints();
-      vtkIdType *pointIds=new vtkIdType[faces[i].nrvertext];
-      for(int z=0;z<faces[i].nrvertext;z++)
-      {
-          points->InsertNextPoint(faces[i].vertexes[z][0],faces[i].vertexes[z][1],faces[i].vertexes[z][2]);
-          pointIds[z]=points->GetNumberOfPoints()-1;
-      }
-
-      std::cout<<faces[i].id<<" "<<faces[i].nrvertext<<" "<<faces[i].nrfaces<<"   "<<faces[i].facevertextnr<<"\n";
-      vtkSmartPointer<vtkCellArray> FF = vtkSmartPointer<vtkCellArray>::New();
-        FF->Allocate(1,1);
+    vtkSmartPointer<vtkCellArray> cells=vtkSmartPointer<vtkCellArray>::New();
+    vtkSmartPointer<vtkDoubleArray> area=vtkSmartPointer<vtkDoubleArray>::New();
+    area->SetName("AREA");
+    area->SetNumberOfComponents(1);
+    vtkSmartPointer<vtkDoubleArray> L1=vtkSmartPointer<vtkDoubleArray>::New();
+    L1->SetName("L1");
+    L1->SetNumberOfComponents(1);
+    vtkSmartPointer<vtkDoubleArray> L2=vtkSmartPointer<vtkDoubleArray>::New();
+    L2->SetName("L2");
+    L2->SetNumberOfComponents(1);
 
 
 
-      for(int k=0;k<faces[i].nrfaces;k++)
-      {
-          FF->InsertNextCell(faces[i].facevertextnr[k]);
-          for(int j=0;j<faces[i].facevertextnr[k];j++)
-          {
-              FF->InsertCellPoint(start+faces[i].faceorder[k][j]);
-          }
-      }
-      OutputPolydata->InsertNextCell(VTK_POLYHEDRON, faces[i].nrvertext, pointIds,
-          faces[i].nrfaces, FF->GetPointer());
-        delete[]pointIds;
+    for (int i = 0; i < input->GetNumberOfPoints(); ++i) {
+        int offset=points->GetNumberOfPoints();
 
-  }
+        for(int k=0;k<faces[i].nrvertext;k++)
+        {
+         points->InsertNextPoint(faces[i].vertexes[k][0],faces[i].vertexes[k][1],faces[i].vertexes[k][2]);
+
+        }
+           for(int k=0;k<faces[i].nrfaces;k++)
+           {
+               if(faces[i].kaimynai[k]<0) continue;
+           //    if(faces[i].facevertextnr[k]!=4)continue;
+
+               cells->InsertNextCell(faces[i].facevertextnr[k]);
+                              vtkSmartPointer<vtkPoints> points1=vtkSmartPointer<vtkPoints>::New();
+                  for(int z=0;z<faces[i].facevertextnr[k];z++)
+                  {
+                    cells->InsertCellPoint(offset+faces[i].faceorder[k][z]);
+                    int hh=faces[i].faceorder[k][z];
+                     points1->InsertNextPoint(faces[i].vertexes[hh][0],faces[i].vertexes[hh][1],faces[i].vertexes[hh][2]);
+                  }
+                  vtkPolygon*poly=vtkPolygon::New();
+                  poly->Initialize(faces[i].facevertextnr[k],points1);
+                  //std::cout<<poly->ComputeArea()<<"\n";
+                  area->InsertNextTuple1(poly->ComputeArea());
+                  poly->Delete();
+/*
+                  double p1[3];
+                  double p2[3];
+                  double p3[3];
+                  double p4[3];
+                  points1->GetPoint(0,p1);
+                  points1->GetPoint(1,p2);
+                  points1->GetPoint(2,p3);
+                  points1->GetPoint(3,p4);
+                  L1->InsertNextTuple1(sqrt((p1[0]-p3[0])*(p1[0]-p3[0])+(p1[1]-p3[1])*(p1[1]-p3[1])+(p1[2]-p3[2])*(p1[2]-p3[2])));
+                  L2->InsertNextTuple1(sqrt((p2[0]-p4[0])*(p2[0]-p4[0])+(p2[1]-p4[1])*(p2[1]-p4[1])+(p2[2]-p4[2])*(p2[2]-p4[2])));*/
+
+           }
+    }
+  output->SetPoints(points);
+  output->SetPolys(cells);
+  output->GetCellData()->SetScalars(area);
+  //output->GetCellData()->AddArray(L1);
+  //output->GetCellData()->AddArray(L2);
 delete[ ]faces;
-
-
-OutputPolydata->SetPoints(points);
-for(int h=0;h<input->GetPointData()->GetNumberOfArrays();h++)
-{
-    OutputPolydata->GetCellData()->AddArray(arrays[h]);
-    //arrays[h]->Delete();
-}
-output->ShallowCopy(OutputPolydata);
 
   return 1;
 }
