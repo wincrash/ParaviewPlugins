@@ -11,3 +11,5 @@ add_subdirectory("Voronoi")
 add_subdirectory("CrackAlgorithms")
 add_subdirectory("HDF5ReaderMultiBlock")
 add_subdirectory("Porocity")
+add_subdirectory("IsotropicRemeshingFilter")
+

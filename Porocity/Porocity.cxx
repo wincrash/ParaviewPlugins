@@ -30,6 +30,7 @@ vtkStandardNewMacro(Porocity);
 //-----------------------------------------------------------------------------
 Porocity::Porocity()
 {
+    CELL_SIZE=0.1;
 }
 
 
@@ -114,14 +115,14 @@ int Porocity::RequestData(vtkInformation *vtkNotUsed(request),
       if((t.z+t.r)>bounds[5]) bounds[5]=t.z+t.r;
   }
   //0.007
-  double CELL_SIZE=0.0025*10;
+ // double CELL_SIZE=0.0025*10;
   int NX=std::floor((bounds[1]-bounds[0])/CELL_SIZE)+1;
   int NY=std::floor((bounds[3]-bounds[2])/CELL_SIZE)+1;
   int NZ=std::floor((bounds[5]-bounds[4])/CELL_SIZE)+1;
   // Specify the size of the image data
   imageData->SetDimensions(NX+2,NY+2,NZ+2);
   imageData->SetSpacing(CELL_SIZE,CELL_SIZE,CELL_SIZE);
-  imageData->SetOrigin(bounds[0]-CELL_SIZE,bounds[2]-CELL_SIZE,bounds[4]-CELL_SIZE);
+  imageData->SetOrigin(bounds[0],bounds[2],bounds[4]);
   vtkSmartPointer<vtkDoubleArray>count=vtkSmartPointer<vtkDoubleArray>::New();
   count->SetName("PARTICLES_COUNT");
   count->SetNumberOfComponents(1);
