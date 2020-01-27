@@ -1,5 +1,5 @@
-#ifndef __Porocity_h
-#define __Porocity_h
+#ifndef __MicroStructure_h
+#define __MicroStructure_h
 
 #include "vtkSmartPointer.h" // compiler errors if this is forward declared
 
@@ -14,13 +14,16 @@ class vtkInformationVector;
 class vtkIterativeClosestPointTransform;
 
 
-class Porocity : public vtkUnstructuredGridAlgorithm
+class MicroStructure : public vtkUnstructuredGridAlgorithm
 {
  public:
     double CELL_SIZE;
     vtkSetMacro(CELL_SIZE, double);
-  static Porocity *New();
-  vtkTypeMacro(Porocity, vtkUnstructuredGridAlgorithm);
+    double RADIUS;
+    vtkSetMacro(RADIUS, double);
+
+  static MicroStructure *New();
+  vtkTypeMacro(MicroStructure, vtkUnstructuredGridAlgorithm);
   void PrintSelf(ostream &os, vtkIndent indent);
 
   // Description:
@@ -35,8 +38,8 @@ class Porocity : public vtkUnstructuredGridAlgorithm
   void RemoveAllSources();
 
  protected:
-  Porocity();
-  ~Porocity();
+  MicroStructure();
+  ~MicroStructure();
 
   // Make sure the pipeline knows what type we expect as input
   int FillInputPortInformation( int port, vtkInformation* info );
