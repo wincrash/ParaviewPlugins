@@ -62,9 +62,13 @@ std::vector<double> GetData(h5cpp::Group &gr, std::string NAME,int kiekis)
     std::vector<double> data;
     if (gr.exists(NAME)) {
         auto dt = gr.open_dataset(NAME);
+        int rank=dt.get_dataspace().get_rank();
         hsize_t dim[2];
         dt.get_dataspace().get_dims(dim);
-        data.resize(dim[0] * kiekis);
+        if(rank==1)
+        data.resize(dim[0] );
+        else
+        data.resize(dim[0] *dim[1] );
         dt.read(&data[0]);
     }
     return data;
@@ -186,14 +190,11 @@ int HDF5ReaderConvex::RequestData(
     //For displacement
     h5cpp::File file1(filenames[findClosestSolutionIndex(0)], "r");
     auto gr0 = file1.root();
-    std::vector<double>oldCENTROID_RADIUS=GetData(gr0,"CENTROID_RADIUS",1);
+    for(size_t i=0;i<gr0.size();i++)
+        std::cout<<"Input faile esantys datasetai : "<<i<<" name = "<<gr0.get_link_name(i)<<"\n";
+    std::vector<double>oldCENTROID=GetData(gr0,"CENTROID",1);
+
     file1.close();
-
-
-    // WriteToHdfReal(group, centroid_radius, "CENTROID_RADIUS");
-    // WriteToHdfReal(group, vertexes, "VERTICES");
-    // WriteToHdfInt(group, face_start, "FACE_START");
-    //    WriteToHdfInt(group, face_ids, "FACE_IDS");
 
 
     h5cpp::File file(tempFilename, "r");
@@ -205,28 +206,23 @@ int HDF5ReaderConvex::RequestData(
     TIME.push_back(gr.attrs().get<double>("TIME"));
 
 
-    std::vector<double> CENTROID_RADIUS=GetData(gr,"CENTROID_RADIUS",1);
+    std::vector<double> CENTROID=GetData(gr,"CENTROID",1);
     std::vector<double> VERTICES=GetData(gr,"VERTICES",1);
-    std::vector<int> VERTICES_COUNT=GetDataINT(gr,"VERTICES_COUNT",1);
+ //   std::vector<int> VERTICES_COUNT=GetDataINT(gr,"VERTICES_COUNT",1);
     std::vector<int> FACE_IDS=GetDataINT(gr,"FACE_IDS",1);
 
-    std::vector<double> VELOCITY=GetData(gr,"VELOCITY",1);
-    std::vector<double> ANGULAR_VELOCITY=GetData(gr,"ANGULAR_VELOCITY",1);
-    std::vector<double> FORCE=GetData(gr,"FORCE",1);
-    std::vector<double> MOMENTUM=GetData(gr,"MOMENTUM",1);
-    std::vector<int> MATERIAL=GetDataINT(gr,"MATERIAL",1);
-    std::vector<int> FIX=GetDataINT(gr,"FIX",1);
+  //  std::vector<double> VELOCITY=GetData(gr,"VELOCITY",1);
+   // std::vector<double> ANGULAR_VELOCITY=GetData(gr,"ANGULAR_VELOCITY",1);
+   // std::vector<double> FORCE=GetData(gr,"FORCE",1);
+   // std::vector<double> MOMENTUM=GetData(gr,"MOMENTUM",1);
+   // std::vector<int> MATERIAL=GetDataINT(gr,"MATERIAL",1);
+   // std::vector<int> FIX=GetDataINT(gr,"FIX",1);
+    std::vector<double> BOUNDING_RADIUS=GetData(gr,"BOUNDING_RADIUS",1);
 
-
-
-
-
-    std::vector<double> BOUNDING_RADIUS;
-    BOUNDING_RADIUS.resize(VERTICES_COUNT.size(),0);
 
     std::vector<double> DEFORM;
-    DEFORM.resize(CENTROID_RADIUS.size(),0);
-    std::transform(CENTROID_RADIUS.begin(), CENTROID_RADIUS.end(), oldCENTROID_RADIUS.begin(), DEFORM.begin(), [&](double l, double r)
+    DEFORM.resize(CENTROID.size(),0);
+    std::transform(CENTROID.begin(), CENTROID.end(), oldCENTROID.begin(), DEFORM.begin(), [&](double l, double r)
     {
         return (l - r);
     });
@@ -238,10 +234,10 @@ int HDF5ReaderConvex::RequestData(
     int k=0;
     for(int i=0;i<VERTICES_COUNT.size();i++)
     {
-        double x=CENTROID_RADIUS[i*4+0];
-        double y=CENTROID_RADIUS[i*4+1];
-        double z=CENTROID_RADIUS[i*4+2];
-        BOUNDING_RADIUS[i]=CENTROID_RADIUS[i*4+3];
+        double x=CENTROID[i*4+0];
+        double y=CENTROID[i*4+1];
+        double z=CENTROID[i*4+2];
+
         for(int a=0;a<VERTICES_COUNT[i];a++)
         {
             points->InsertNextPoint(VERTICES[k+0]+x,VERTICES[k+1]+y,VERTICES[k+2]+z);
@@ -254,7 +250,7 @@ int HDF5ReaderConvex::RequestData(
     std::exclusive_scan(VERTICES_COUNT.begin(), VERTICES_COUNT.end(),VERTICES_START.begin(),0);
 
     int i=0;
-    for(int particleID=0;particleID<CENTROID_RADIUS.size()/4;particleID++)
+    for(int particleID=0;particleID<CENTROID.size()/4;particleID++)
     {
         int nfaces=FACE_IDS[i];i++;
         vtkSmartPointer<vtkCellArray> dodechedronFaces = vtkSmartPointer<vtkCellArray>::New();
@@ -285,20 +281,20 @@ int HDF5ReaderConvex::RequestData(
     vtkFieldData* fdata = output->GetFieldData();
 
     AddToVTKVector(cdata,DEFORM,"DISPLACEMENT");
-    AddToVTKVector(cdata,CENTROID_RADIUS,"CENTROID");
+    AddToVTKVector(cdata,CENTROID,"CENTROID");
     AddToVTKScalar(cdata,BOUNDING_RADIUS,"BOUNDING_RADIUS");
     AddToVTKScalar(fdata,STEP,"STEP");
     AddToVTKScalar(fdata,TIME,"TIME");
 
 
-    AddToVTKVector(cdata,VELOCITY,"VELOCITY");
-    AddToVTKVector(cdata,ANGULAR_VELOCITY,"ANGULAR_VELOCITY");
-    AddToVTKVector(cdata,FORCE,"FORCE");
-    AddToVTKVector(cdata,MOMENTUM,"MOMENTUM");
+    //AddToVTKVector(cdata,VELOCITY,"VELOCITY");
+    //AddToVTKVector(cdata,ANGULAR_VELOCITY,"ANGULAR_VELOCITY");
+    //AddToVTKVector(cdata,FORCE,"FORCE");
+   // AddToVTKVector(cdata,MOMENTUM,"MOMENTUM");
 
-   AddToVTKScalar(cdata,VERTICES_COUNT,"VERTICES_COUNT");
-   AddToVTKScalar(cdata,MATERIAL,"MATERIAL");
-   AddToVTKScalar(cdata,FIX,"FIX");
+   //AddToVTKScalar(cdata,VERTICES_COUNT,"VERTICES_COUNT");
+  // AddToVTKScalar(cdata,MATERIAL,"MATERIAL");
+  // AddToVTKScalar(cdata,FIX,"FIX");
 
 
     file.close();
