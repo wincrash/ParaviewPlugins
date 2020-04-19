@@ -327,8 +327,7 @@ int HDF5ReaderConvex::RequestData(
 
     std::vector<REAL4> ANGULAR_VELOCITY;
     readDataSetREAL4(gr,ANGULAR_VELOCITY,"ANGULAR_VELOCITY",PARTICLE_COUNT);
-    std::vector<REAL4> POINTS;
-    readDataSetREAL4(gr,POINTS,"POINTS",PARTICLE_COUNT*4);
+
     std::vector<double> MASS;
     readDataSetREAL(gr,MASS,"MASS",PARTICLE_COUNT);
     std::vector<double> VOLUME;
@@ -336,23 +335,74 @@ int HDF5ReaderConvex::RequestData(
 
 
 
+
+    /*
+    group.attrs().create<int>("FACE_IDS_COUNT", FACE_IDS_COUNT);
+    group.attrs().create<int>("POINT_COUNT", POINT_COUNT);
+    WriteToHdfReal4(group, POINTS, "POINTS");
+
+    WriteToHdfInt(group, FACE_COUNT, "FACE_COUNT");
+    WriteToHdfInt(group, FACES_START, "FACES_START");
+    WriteToHdfInt(group, POINTS_START, "POINTS_START");
+    */
+
+int FACE_IDS_COUNT=gr.attrs().get<int>("FACE_IDS_COUNT");
+int POINT_COUNT=gr.attrs().get<int>("POINT_COUNT");
+    std::vector<REAL4> POINTS;
+    readDataSetREAL4(gr,POINTS,"POINTS",POINT_COUNT);
+    std::vector<int> FACE_IDS;
+    readDataSetINT(gr,FACE_IDS,"FACE_IDS",FACE_IDS_COUNT);
+    std::vector<int> FACE_COUNT;
+    readDataSetINT(gr,FACE_COUNT,"FACE_COUNT",PARTICLE_COUNT);
+    std::vector<int> FACES_START;
+    readDataSetINT(gr,FACES_START,"FACES_START",PARTICLE_COUNT);
+    std::vector<int> POINTS_START;
+    readDataSetINT(gr,POINTS_START,"POINTS_START",PARTICLE_COUNT);
+    std::vector<int> POINTS_COUNT;
+    readDataSetINT(gr,POINTS_COUNT,"POINTS_COUNT",PARTICLE_COUNT);
+
     vtkPoints *points = vtkPoints::New();
-    output->Allocate();
+    output->Allocate(1000,1000);
 
-
+    int index=0;
+    int findex=0;
     for(int i=0;i<PARTICLE_COUNT;i++)
     {
-        REAL4 P1=POINTS[i*4+0];
-        REAL4 P2=POINTS[i*4+1];
-        REAL4 P3=POINTS[i*4+2];
-        REAL4 P4=POINTS[i*4+3];
-        points->InsertNextPoint(P1[0],P1[1],P1[2]);
-        points->InsertNextPoint(P2[0],P2[1],P2[2]);
-        points->InsertNextPoint(P3[0],P3[1],P3[2]);
-        points->InsertNextPoint(P4[0],P4[1],P4[2]);
-        vtkIdType ptIds[] = {i*4+0, i*4+1, i*4+2, i*4+3};
-        output->InsertNextCell( VTK_TETRA, 4, ptIds );
+        int point_startas=POINTS_START[i];
+        vtkIdType dodechedronPointsIds[POINTS_COUNT[i]];
+        for(int z=0;z<POINTS_COUNT[i];z++)
+        {
+            dodechedronPointsIds[z]=index;
+            REAL4 P=POINTS[index++];
+            points->InsertNextPoint(P[0],P[1],P[2]);
+        }
+
+        vtkSmartPointer<vtkCellArray> dodechedronFaces =vtkSmartPointer<vtkCellArray>::New();
+        int face_count=FACE_COUNT[i];
+        for (size_t ii = 0; ii < face_count; ii++)
+        {
+            int fsize=FACE_IDS[findex++];
+            dodechedronFaces->InsertNextCell(fsize);
+            for(size_t k=0;k<fsize;k++)
+                dodechedronFaces->InsertCellPoint(FACE_IDS[findex++]+point_startas);
+        }
+
+        output->InsertNextCell(VTK_POLYHEDRON,
+                               POINTS_COUNT[i], dodechedronPointsIds,
+                               face_count, dodechedronFaces->GetPointer());
     }
+
+
+
+
+
+
+
+
+
+
+
+
 
     std::cout<<"output number of cells "<<output->GetNumberOfCells()<<"\n";
     output->SetPoints(points);
@@ -371,6 +421,8 @@ int HDF5ReaderConvex::RequestData(
 
     AddToVTKScalar(cdata,MATERIAL,"MATERIAL");
     AddToVTKScalar(cdata,FIX,"FIX");
+        AddToVTKScalar(cdata,POINTS_COUNT,"POINTS_COUNT");
+        AddToVTKScalar(cdata,FACE_COUNT,"FACE_COUNT");
 
 
     AddToVTKScalar(cdata,NN_COUNT,"NN_COUNT");
