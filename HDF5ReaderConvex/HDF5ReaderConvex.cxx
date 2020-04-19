@@ -38,6 +38,7 @@
 #include <iterator>
 #include <numeric>
 #include <vector>
+#include <vtkTetra.h>
 
 #include <boost/array.hpp>
 typedef boost::array<double,4> REAL4;
@@ -299,11 +300,6 @@ int HDF5ReaderConvex::RequestData(
         std::cout<<"Input faile esantys datasetai : "<<i<<" name = "<<gr.get_link_name(i)<<"\n";
 
     size_t PARTICLE_COUNT=gr.attrs().get<int>("PARTICLE_COUNT");
-    size_t MAX_FACE_COUNT=gr.attrs().get<int>("MAX_FACE_COUNT");
-    size_t MAX_VERTICES_COUNT=gr.attrs().get<int>("MAX_VERTICES_COUNT");
-    size_t MAX_FACE_INDEX_COUNT=gr.attrs().get<int>("MAX_FACE_INDEX_COUNT");
-    size_t FACE_INDEX_OFFSET=gr.attrs().get<int>("FACE_INDEX_OFFSET");
-
 
     std::vector<double> STEP;
     STEP.push_back(gr.attrs().get<int>("STEP"));
@@ -311,9 +307,8 @@ int HDF5ReaderConvex::RequestData(
     TIME.push_back(gr.attrs().get<double>("TIME"));
 
 
-    std::vector<REAL4> CENTROID;
-    std::vector<REAL4> VERTICES;
-    std::vector<INT2> PARTICLE_GEOMETRY_INFO;
+
+
     std::vector<int> FIX;
     readDataSetINT(gr,FIX,"FIX",PARTICLE_COUNT);
     std::vector<int> MATERIAL;
@@ -324,78 +319,46 @@ int HDF5ReaderConvex::RequestData(
     readDataSetREAL4(gr,TORQUE,"TORQUE",PARTICLE_COUNT);
     std::vector<REAL4> VELOCITY;
     readDataSetREAL4(gr,VELOCITY,"VELOCITY",PARTICLE_COUNT);
-
     std::vector<int> NN_COUNT;
     readDataSetINT(gr,NN_COUNT,"NN_COUNT",PARTICLE_COUNT);
 
-    std::vector<double> BOUNDING_RADIUS;
-    readDataSetREAL(gr,BOUNDING_RADIUS,"BOUNDING_RADIUS",PARTICLE_COUNT);
+    std::vector<int> PP_COUNT;
+    readDataSetINT(gr,PP_COUNT,"PP_COUNT",PARTICLE_COUNT);
 
     std::vector<REAL4> ANGULAR_VELOCITY;
     readDataSetREAL4(gr,ANGULAR_VELOCITY,"ANGULAR_VELOCITY",PARTICLE_COUNT);
-
-    readDataSetREAL4(gr,CENTROID,"CENTROID",PARTICLE_COUNT);
-    readDataSetREAL4(gr,VERTICES,"VERTICES",PARTICLE_COUNT*MAX_VERTICES_COUNT);
-    readDataSetINT2(gr,PARTICLE_GEOMETRY_INFO,"PARTICLE_GEOMETRY_INFO",PARTICLE_COUNT);
-    std::vector<int> FACE_IDS=GetDataINT(gr,"FACE_IDS",1);
+    std::vector<REAL4> POINTS;
+    readDataSetREAL4(gr,POINTS,"POINTS",PARTICLE_COUNT*4);
+    std::vector<double> MASS;
+    readDataSetREAL(gr,MASS,"MASS",PARTICLE_COUNT);
+    std::vector<double> VOLUME;
+    readDataSetREAL(gr,VOLUME,"VOLUME",PARTICLE_COUNT);
 
 
 
     vtkPoints *points = vtkPoints::New();
     output->Allocate();
 
-    std::vector<int> VERTICES_COUNT(PARTICLE_COUNT,0);
-    for(size_t i=0;i<PARTICLE_COUNT;i++)
+
+    for(int i=0;i<PARTICLE_COUNT;i++)
     {
-        REAL4 center=CENTROID[i];
-        size_t verticeCount=PARTICLE_GEOMETRY_INFO[i][0];
-        VERTICES_COUNT[i]=verticeCount;
-        for(size_t a=0;a<verticeCount;a++)
-        {
-            REAL4 v=VERTICES[i*MAX_VERTICES_COUNT+a];
-            points->InsertNextPoint(v[0]+center[0],v[1]+center[1],v[2]+center[2]);
-        }
+        REAL4 P1=POINTS[i*4+0];
+        REAL4 P2=POINTS[i*4+1];
+        REAL4 P3=POINTS[i*4+2];
+        REAL4 P4=POINTS[i*4+3];
+        points->InsertNextPoint(P1[0],P1[1],P1[2]);
+        points->InsertNextPoint(P2[0],P2[1],P2[2]);
+        points->InsertNextPoint(P3[0],P3[1],P3[2]);
+        points->InsertNextPoint(P4[0],P4[1],P4[2]);
+        vtkIdType ptIds[] = {i*4+0, i*4+1, i*4+2, i*4+3};
+        output->InsertNextCell( VTK_TETRA, 4, ptIds );
     }
-
-    std::vector<int> VERTICES_START;
-    VERTICES_START.resize(PARTICLE_COUNT,0);
-    std::exclusive_scan(VERTICES_COUNT.begin(), VERTICES_COUNT.end(),VERTICES_START.begin(),0);
-
-
-    for(int particleID=0;particleID<PARTICLE_COUNT;particleID++)
-    {
-        size_t nfaces=PARTICLE_GEOMETRY_INFO[particleID][1];
-        int i=particleID*FACE_INDEX_OFFSET;
-        vtkCellArray* dodechedronFaces = vtkCellArray::New();
-        for(int k=0;k<nfaces;k++)
-        {
-            int Vcount=FACE_IDS[i];i++;
-            dodechedronFaces->InsertNextCell(Vcount);
-            for(int v=0;v<Vcount;v++)
-            {
-                dodechedronFaces->InsertCellPoint(FACE_IDS[i]+VERTICES_START[particleID]);i++;
-            }
-        }
-        int VertexCount=VERTICES_COUNT[particleID];
-        vtkIdType dodechedronPointsIds[VertexCount];
-        for(int b=0;b<VertexCount;b++)
-        {
-            dodechedronPointsIds[b]=VERTICES_START[particleID]+b;
-        }
-        output->InsertNextCell(VTK_POLYHEDRON,
-                               VertexCount, dodechedronPointsIds,
-                               nfaces, dodechedronFaces->GetPointer());
-    }
-
 
     std::cout<<"output number of cells "<<output->GetNumberOfCells()<<"\n";
     output->SetPoints(points);
     vtkCellData* cdata =output->GetCellData();
     vtkFieldData* fdata = output->GetFieldData();
 
-    //AddToVTKVector(cdata,DEFORM,"DISPLACEMENT");
-    AddToVTKVector(cdata,CENTROID,"CENTROID");
-    //AddToVTKScalar(cdata,BOUNDING_RADIUS,"BOUNDING_RADIUS");
     AddToVTKScalar(fdata,STEP,"STEP");
     AddToVTKScalar(fdata,TIME,"TIME");
 
@@ -406,13 +369,14 @@ int HDF5ReaderConvex::RequestData(
     AddToVTKVector(cdata,FORCE,"FORCE");
     AddToVTKVector(cdata,TORQUE,"TORQUE");
 
-    AddToVTKScalar(cdata,VERTICES_COUNT,"VERTICES_COUNT");
     AddToVTKScalar(cdata,MATERIAL,"MATERIAL");
     AddToVTKScalar(cdata,FIX,"FIX");
 
 
     AddToVTKScalar(cdata,NN_COUNT,"NN_COUNT");
-    AddToVTKScalar(cdata,BOUNDING_RADIUS,"BOUNDING_RADIUS");
+    AddToVTKScalar(cdata,PP_COUNT,"PP_COUNT");
+    AddToVTKScalar(cdata,MASS,"MASS");
+    AddToVTKScalar(cdata,VOLUME,"VOLUME");
 
     output->Modified();
     file.close();
