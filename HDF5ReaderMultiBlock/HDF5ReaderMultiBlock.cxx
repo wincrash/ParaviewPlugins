@@ -200,6 +200,7 @@ int HDF5ReaderMultiBlock::RequestData(
     //vtkPolyData*output = vtkPolyData::New();
     vtkPoints*points = vtkPoints::New();
     std::vector<double> POSITIONS=GetData(gr,"POSITIONS",4);
+    std::vector<double> RADIUSAS=GetData(gr,"RADIUS",1);
     points->SetNumberOfPoints(POSITIONS.size()/4);
     std::vector<double> DEFORM;
     DEFORM.resize(POSITIONS.size());
@@ -350,6 +351,11 @@ int HDF5ReaderMultiBlock::RequestData(
         vtkCellArray*lines=vtkCellArray::New();
         std::vector<int> CellsInParticles;
         CellsInParticles.resize(points->GetNumberOfPoints(),0);
+        vtkDoubleArray*lineLengthProc=vtkDoubleArray::New();
+        lineLengthProc->SetName("LENGTH_PROC");
+        lineLengthProc->SetNumberOfComponents(1);
+        lineLengthProc->SetNumberOfTuples(particle1.size());
+
 
         for(int i=0;i<particle1.size();i++)
         {
@@ -357,11 +363,21 @@ int HDF5ReaderMultiBlock::RequestData(
             int id1=particle1[i];
             int id2=particle2[i];
 
+
+            //std::vector<double> POSITIONS=GetData(gr,"POSITIONS",4);
+            //std::vector<double> RADIUSAS=GetData(gr,"RADIUS",1);
+            double radius1=RADIUSAS[id1];
+            double radius2=RADIUSAS[id2];
+            double ilgis=std::sqrt((POSITIONS[id1*4+0]-POSITIONS[id2*4+0])*(POSITIONS[id1*4+0]-POSITIONS[id2*4+0])+
+                    (POSITIONS[id1*4+1]-POSITIONS[id2*4+1])*(POSITIONS[id1*4+1]-POSITIONS[id2*4+1])+
+                    (POSITIONS[id1*4+2]-POSITIONS[id2*4+2])*(POSITIONS[id1*4+2]-POSITIONS[id2*4+2]));
+            lineLengthProc->SetTuple1(i,ilgis/(radius1+radius2));
             lines->InsertCellPoint(id1);
             lines->InsertCellPoint(id2);
             CellsInParticles[id1]++;
             CellsInParticles[id2]++;
         }
+        cdata->AddArray(lineLengthProc);
 
         for(int i=0;i<CellsInParticles.size();i++)
         {
