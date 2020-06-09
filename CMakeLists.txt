@@ -5,6 +5,8 @@ INCLUDE(${PARAVIEW_USE_FILE})
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(HDF5)
+include_directories(${HDF5_INCLUDE_DIR})
 
 add_subdirectory("HDF5Reader")
 add_subdirectory("Voronoi")

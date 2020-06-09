@@ -9,7 +9,7 @@
 #include "vtkVertexGlyphFilter.h"
 
 #include <algorithm>
-#include "hdf_wrapper.hpp"
+//#include "hdf_wrapper.hpp"
 #include "vtkUnstructuredGrid.h"
 #include <iostream>
 #include <vtkCellArray.h>
@@ -62,37 +62,122 @@ vtkIdType HDF5ReaderConvex::findClosestSolutionIndex(double Time)
 }
 
 
-
-std::vector<double> GetData(h5cpp::Group &gr, std::string NAME,int kiekis)
+#define MAX_FACE_COUNT 6
+#define MAX_VERTEX_COUNT_IN_FACE 8
+#define MAX_VERTICES 12
+typedef struct
 {
-    std::vector<double> data;
-    if (gr.exists(NAME)) {
-        auto dt = gr.open_dataset(NAME);
-        int rank=dt.get_dataspace().get_rank();
-        hsize_t dim[2];
-        dt.get_dataspace().get_dims(dim);
-        if(rank==1)
-            data.resize(dim[0] );
-        else
-            data.resize(dim[0] *dim[1] );
-        dt.read(&data[0]);
-    }
-    return data;
-}
+    REAL4 POINTS[MAX_VERTICES];
+} CONVEX_POINTS_TYPE;
+typedef std::vector<CONVEX_POINTS_TYPE> CONVEX_POINTS_ARRAY;
 
-std::vector<int> GetDataINT(h5cpp::Group &gr, std::string NAME,int kiekis)
+typedef struct
 {
-    std::vector<int> data;
-    if (gr.exists(NAME)) {
-        auto dt = gr.open_dataset(NAME);
-        hsize_t dim[2];
-        dt.get_dataspace().get_dims(dim);
-        data.resize(dim[0] * kiekis);
-        dt.read(&data[0]);
-    }
-    return data;
-}
+    unsigned char FACE_VERTEX_COUNT[MAX_FACE_COUNT];
+    unsigned char IDS[MAX_FACE_COUNT][MAX_VERTEX_COUNT_IN_FACE];
+} FACE_INFO_TYPE;
+typedef std::vector<FACE_INFO_TYPE> FACE_INFO_ARRAY;
 
+
+typedef struct
+{
+    unsigned char VERTEX_COUNT;
+    unsigned char FACE_COUNT;
+    unsigned char FIX;
+    unsigned char MATERIAL;
+} PARTICLE_INFO_TYPE;
+typedef std::vector<PARTICLE_INFO_TYPE> PARTICLE_INFO_ARRAY;
+#include <hdf5.h>
+
+#include "H5Cpp.h"
+
+auto ReadConvexPointsInfo=[](H5::H5File* file,std::vector<CONVEX_POINTS_TYPE> &data,size_t COUNT)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "CONVEX_POINTS" ));
+    H5::CompType mtype1( sizeof(CONVEX_POINTS_TYPE));
+    hsize_t dim2[] = {MAX_VERTICES,4};
+    auto array2_tid = H5Tarray_create(H5T_NATIVE_DOUBLE, 2,dim2);
+    mtype1.insertMember( "POINTS", HOFFSET(CONVEX_POINTS_TYPE, POINTS), array2_tid);
+    dataset->read( &data[0], mtype1 );
+    delete dataset;
+};
+
+
+
+auto ReadFaceInfo=[](H5::H5File* file,std::vector<FACE_INFO_TYPE> &data,size_t COUNT)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "FACE_INFO" ));
+    H5::CompType mtype1( sizeof(FACE_INFO_TYPE) );
+    hsize_t dim1[] = {MAX_FACE_COUNT};
+    auto array1_tid = H5Tarray_create(H5T_NATIVE_UCHAR, 1,dim1);
+    hsize_t dim2[] = {MAX_FACE_COUNT,MAX_VERTEX_COUNT_IN_FACE};
+    auto array2_tid = H5Tarray_create(H5T_NATIVE_UCHAR, 2,dim2);
+    mtype1.insertMember( "FACE_VERTEX_COUNT", HOFFSET(FACE_INFO_TYPE, FACE_VERTEX_COUNT), array1_tid);
+    mtype1.insertMember( "IDS", HOFFSET(FACE_INFO_TYPE, IDS), array2_tid);
+    dataset->read( &data[0], mtype1 );
+    delete dataset;
+};
+
+
+
+auto ReadParticleInfo=[](H5::H5File* file,std::vector<PARTICLE_INFO_TYPE> &data,size_t COUNT)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "PARTICLE_INFO" ));
+    H5::CompType mtype1( sizeof(PARTICLE_INFO_TYPE) );
+    mtype1.insertMember( "VERTEX_COUNT", HOFFSET(PARTICLE_INFO_TYPE, VERTEX_COUNT), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "FACE_COUNT", HOFFSET(PARTICLE_INFO_TYPE, FACE_COUNT), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "FIX", HOFFSET(PARTICLE_INFO_TYPE, FIX), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "MATERIAL", HOFFSET(PARTICLE_INFO_TYPE, MATERIAL), H5::PredType::NATIVE_UCHAR);
+    dataset->read( &data[0], mtype1 );
+    delete dataset;
+};
+
+auto ReadIntArray=[](H5::H5File* file,std::vector<int> &data,size_t COUNT,std::string name)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( name ));
+    dataset->read( &data[0], H5::PredType::NATIVE_INT );
+    delete dataset;
+};
+
+
+auto ReadRealArray=[](H5::H5File* file,std::vector<double> &data,size_t COUNT,std::string name)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( name ));
+    dataset->read( &data[0], H5::PredType::NATIVE_DOUBLE );
+    delete dataset;
+};
+
+
+auto ReadReal4Array=[](H5::H5File* file,std::vector<REAL4> &data,size_t COUNT,std::string name)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( name ));
+    dataset->read( &data[0], H5::PredType::NATIVE_DOUBLE );
+    delete dataset;
+};
+
+
+auto ReadIntAttribute=[](H5::H5File*file,std::string attribute_name)->int
+{
+    H5::DataSpace att_space(H5S_SCALAR);
+    auto att=file->openAttribute(attribute_name);
+    int val=0;
+    att.read(H5::PredType::NATIVE_INT,&val);
+    return val;
+};
+auto ReadDoubleAttribute=[](H5::H5File*file,std::string attribute_name)->double
+{
+    H5::DataSpace att_space(H5S_SCALAR);
+    auto att=file->openAttribute(attribute_name);
+    double val=0;
+    att.read(H5::PredType::NATIVE_DOUBLE,&val);
+    return val;
+};
 
 void AddToVTKScalar(vtkFieldData *location,std::vector<double>&array,std::string name)
 {
@@ -111,8 +196,6 @@ void AddToVTKScalar(vtkFieldData *location,std::vector<double>&array,std::string
         data->Delete();
     }
 }
-
-
 
 void AddToVTKScalar(vtkFieldData *location,std::vector<int>&array,std::string name)
 {
@@ -170,9 +253,6 @@ void AddToVTKVector(vtkFieldData *location,std::vector<REAL4>&array,std::string 
 
 
 
-
-
-
 vtkStandardNewMacro(HDF5ReaderConvex);
 
 
@@ -192,214 +272,63 @@ int HDF5ReaderConvex::RequestData(
         vtkInformationVector *outputVector)
 {
 
-    auto readDataSetREAL4=[](auto &gr,auto &array,std::string name,size_t N)
-    {
-        std::cout<<"Reading from file REAL4 size="<<N<<" array name="<<name<<"\n";
-        for(size_t ii=0;ii<gr.size();ii++)
-            if(gr.get_link_name(ii).compare(name)==0){
-                auto dt = gr.open_dataset(name.c_str());
-                array.resize(N,REAL4({1,2,3,4}));
-                std::vector<double> tempArray(N*4);
-                dt.read(&tempArray[0]);
-                for(size_t i=0;i<N;i++)
-                {
-                    array[i]=REAL4({tempArray[i*4],tempArray[i*4+1],tempArray[i*4+2],tempArray[i*4+3]});
-                }
-            }
-    };
-
-    auto readDataSetREAL=[](auto &gr,auto &array,std::string name,size_t N)
-    {
-        std::cout<<"Reading from file REAL size="<<N<<" array name="<<name<<"\n";
-        for(size_t ii=0;ii<gr.size();ii++)
-            if(gr.get_link_name(ii).compare(name)==0){
-                auto dt = gr.open_dataset(name.c_str());
-                array.resize(N);
-                std::vector<double> tempArray(N);
-                dt.read(&tempArray[0]);
-                for(size_t i=0;i<N;i++)
-                {
-                    array[i]=tempArray[i];
-                }
-            }
-    };
-
-    auto readDataSetINT2=[](auto &gr,auto &array,std::string name,size_t N)
-    {
-        std::cout<<"Reading from file INT2 size="<<N<<" array name="<<name<<"\n";
-        for(size_t ii=0;ii<gr.size();ii++)
-            if(gr.get_link_name(ii).compare(name)==0){
-                auto dt = gr.open_dataset(name.c_str());
-                std::cout<<"Reading from file INT2 size="<<N<<" array name="<<name<<"\n";
-                array.resize(N);
-                std::cout<<"Reading from file INT2 size="<<N<<" array name="<<name<<"\n";
-                std::vector<int> tempArray(N*2);
-                std::cout<<"Reading from file INT2 size="<<N<<" array name="<<name<<"\n";
-                dt.read(&tempArray[0]);
-                std::cout<<"Reading from file INT2 size="<<N<<" array name="<<name<<"\n";
-                for(size_t i=0;i<N;i++)
-                {
-                    array[i]=INT2({tempArray[i*2],tempArray[i*2+1]});
-                }
-                std::cout<<"Reading from file INT2 size="<<N<<" array name="<<name<<"\n";
-            }
-    };
-    auto readDataSetINT4=[](auto &gr,auto &array,std::string name,size_t N)
-    {
-        std::cout<<"Reading from file INT4 size="<<N<<" array name="<<name<<"\n";
-        for(size_t ii=0;ii<gr.size();ii++)
-            if(gr.get_link_name(ii).compare(name)==0){
-                auto dt = gr.open_dataset(name.c_str());
-                array.resize(N);
-                std::vector<int> tempArray(N*4);
-                dt.read(&tempArray[0]);
-                for(size_t i=0;i<N;i++)
-                {
-                    array[i]=INT4({tempArray[i*4],tempArray[i*4+1],tempArray[i*4+2],tempArray[i*4+3]});
-                }
-            }
-    };
-    auto readDataSetINT=[](auto &gr,auto &array,std::string name,size_t N)
-    {
-        std::cout<<"Reading from file INT size="<<N<<" array name="<<name<<"\n";
-        for(size_t ii=0;ii<gr.size();ii++)
-            if(gr.get_link_name(ii).compare(name)==0){
-                auto dt = gr.open_dataset(name.c_str());
-
-                std::vector<int> tempArray(N);
-                array.resize(N);
-                dt.read(&tempArray[0]);
-                for(size_t i=0;i<N;i++)
-                {
-                    array[i]=tempArray[i];
-                }
-            }
-    };
-
     vtkInformation *outInfo = outputVector->GetInformationObject(0);
-
-
     double requestedTime = outInfo->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
-    std::cout<<"  "<<findClosestSolutionIndex(requestedTime)<<"\n";
-
-
     vtkUnstructuredGrid *output = vtkUnstructuredGrid::SafeDownCast(
                 outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
-    // Here is where you would read the data from the file. In this example,
-    // we simply create a point.
-    std::cout<<"iddd "<<findClosestSolutionIndex(requestedTime)<<"\n";
     std::string tempFilename=filenames[findClosestSolutionIndex(requestedTime)];
-    std::cout<<"filename "<<tempFilename<<"\n";
-
-    h5cpp::File file(tempFilename, "r");
-    auto gr = file.root();
-
-
-    for(size_t i=0;i<gr.size();i++)
-        std::cout<<"Input faile esantys datasetai : "<<i<<" name = "<<gr.get_link_name(i)<<"\n";
-
-    size_t PARTICLE_COUNT=gr.attrs().get<int>("PARTICLE_COUNT");
-
-    std::vector<double> STEP;
-    STEP.push_back(gr.attrs().get<int>("STEP"));
-    std::vector<double> TIME;
-    TIME.push_back(gr.attrs().get<double>("TIME"));
 
 
 
+    std::vector<CONVEX_POINTS_TYPE> HOST_CONVEX_POINTS;
+    std::vector<FACE_INFO_TYPE> HOST_FACE_INFO;
+    std::vector<PARTICLE_INFO_TYPE> HOST_PARTICLE_INFO;
 
-    std::vector<int> FIX;
-    readDataSetINT(gr,FIX,"FIX",PARTICLE_COUNT);
-    std::vector<int> MATERIAL;
-    readDataSetINT(gr,MATERIAL,"MATERIAL",PARTICLE_COUNT);
-    std::vector<REAL4> FORCE;
-    readDataSetREAL4(gr,FORCE,"FORCE",PARTICLE_COUNT);
-    std::vector<REAL4> TORQUE;
-    readDataSetREAL4(gr,TORQUE,"TORQUE",PARTICLE_COUNT);
-    std::vector<REAL4> VELOCITY;
-    readDataSetREAL4(gr,VELOCITY,"VELOCITY",PARTICLE_COUNT);
-    std::vector<int> NN_COUNT;
-    readDataSetINT(gr,NN_COUNT,"NN_COUNT",PARTICLE_COUNT);
+    H5::H5File* file= new H5::H5File( tempFilename, H5F_ACC_RDONLY );
+    size_t PARTICLE_COUNT=ReadIntAttribute(file,"PARTICLE_COUNT");
+    size_t TIME_STEP=ReadIntAttribute(file,"STEP");
+    double TIME=ReadDoubleAttribute(file,"TIME");
 
-    std::vector<int> PP_COUNT;
-    readDataSetINT(gr,PP_COUNT,"PP_COUNT",PARTICLE_COUNT);
+    ReadConvexPointsInfo(file,HOST_CONVEX_POINTS,PARTICLE_COUNT);
+    ReadParticleInfo(file,HOST_PARTICLE_INFO,PARTICLE_COUNT);
+    ReadFaceInfo(file,HOST_FACE_INFO,PARTICLE_COUNT);
 
-    std::vector<REAL4> ANGULAR_VELOCITY;
-    readDataSetREAL4(gr,ANGULAR_VELOCITY,"ANGULAR_VELOCITY",PARTICLE_COUNT);
-
-    std::vector<double> MASS;
-    readDataSetREAL(gr,MASS,"MASS",PARTICLE_COUNT);
-    std::vector<double> VOLUME;
-    readDataSetREAL(gr,VOLUME,"VOLUME",PARTICLE_COUNT);
-
-
-
-
-    /*
-    group.attrs().create<int>("FACE_IDS_COUNT", FACE_IDS_COUNT);
-    group.attrs().create<int>("POINT_COUNT", POINT_COUNT);
-    WriteToHdfReal4(group, POINTS, "POINTS");
-
-    WriteToHdfInt(group, FACE_COUNT, "FACE_COUNT");
-    WriteToHdfInt(group, FACES_START, "FACES_START");
-    WriteToHdfInt(group, POINTS_START, "POINTS_START");
-    */
-
-int FACE_IDS_COUNT=gr.attrs().get<int>("FACE_IDS_COUNT");
-int POINT_COUNT=gr.attrs().get<int>("POINT_COUNT");
-    std::vector<REAL4> POINTS;
-    readDataSetREAL4(gr,POINTS,"POINTS",POINT_COUNT);
-    std::vector<int> FACE_IDS;
-    readDataSetINT(gr,FACE_IDS,"FACE_IDS",FACE_IDS_COUNT);
-    std::vector<int> FACE_COUNT;
-    readDataSetINT(gr,FACE_COUNT,"FACE_COUNT",PARTICLE_COUNT);
-    std::vector<int> FACES_START;
-    readDataSetINT(gr,FACES_START,"FACES_START",PARTICLE_COUNT);
-    std::vector<int> POINTS_START;
-    readDataSetINT(gr,POINTS_START,"POINTS_START",PARTICLE_COUNT);
-    std::vector<int> POINTS_COUNT;
-    readDataSetINT(gr,POINTS_COUNT,"POINTS_COUNT",PARTICLE_COUNT);
-
+    std::vector<int> FIX(PARTICLE_COUNT,0);
+    std::vector<int> MATERIAL(PARTICLE_COUNT,0);
     vtkPoints *points = vtkPoints::New();
+    points->SetNumberOfPoints(0);
+    points->SetDataTypeToDouble();
     output->Allocate(1000,1000);
 
-    int index=0;
-    int findex=0;
-    for(int i=0;i<PARTICLE_COUNT;i++)
+    for(size_t i=0;i<PARTICLE_COUNT;i++)
     {
-        int point_startas=POINTS_START[i];
-        vtkIdType dodechedronPointsIds[POINTS_COUNT[i]];
-        for(int z=0;z<POINTS_COUNT[i];z++)
+        CONVEX_POINTS_TYPE CPOINTS=HOST_CONVEX_POINTS[i];
+        FACE_INFO_TYPE CFACE=HOST_FACE_INFO[i];
+        PARTICLE_INFO_TYPE CINFO=HOST_PARTICLE_INFO[i];
+        FIX[i]=CINFO.FIX;
+        MATERIAL[i]=CINFO.MATERIAL;
+        int pointStart=points->GetNumberOfPoints();
+        vtkIdType dodechedronPointsIds[CINFO.VERTEX_COUNT];
+        for(size_t z=0;z<CINFO.VERTEX_COUNT;z++)
         {
-            dodechedronPointsIds[z]=index;
-            REAL4 P=POINTS[index++];
-            points->InsertNextPoint(P[0],P[1],P[2]);
+            dodechedronPointsIds[z]=points->GetNumberOfPoints();
+            points->InsertNextPoint(CPOINTS.POINTS[z][0],CPOINTS.POINTS[z][1],CPOINTS.POINTS[z][2]);
         }
 
         vtkSmartPointer<vtkCellArray> dodechedronFaces =vtkSmartPointer<vtkCellArray>::New();
-        int face_count=FACE_COUNT[i];
-        for (size_t ii = 0; ii < face_count; ii++)
+
+        for (size_t z = 0; z < CINFO.FACE_COUNT; z++)
         {
-            int fsize=FACE_IDS[findex++];
-            dodechedronFaces->InsertNextCell(fsize);
-            for(size_t k=0;k<fsize;k++)
-                dodechedronFaces->InsertCellPoint(FACE_IDS[findex++]+point_startas);
+            dodechedronFaces->InsertNextCell(CFACE.FACE_VERTEX_COUNT[z]);
+            for(size_t k=0;k<CFACE.FACE_VERTEX_COUNT[z];k++)
+                dodechedronFaces->InsertCellPoint(CFACE.IDS[z][k]+pointStart);
         }
 
         output->InsertNextCell(VTK_POLYHEDRON,
-                               POINTS_COUNT[i], dodechedronPointsIds,
-                               face_count, dodechedronFaces->GetPointer());
+                               CINFO.VERTEX_COUNT, dodechedronPointsIds,
+                               CINFO.FACE_COUNT, dodechedronFaces->GetPointer());
     }
-
-
-
-
-
-
-
-
-
 
 
 
@@ -408,30 +337,70 @@ int POINT_COUNT=gr.attrs().get<int>("POINT_COUNT");
     output->SetPoints(points);
     vtkCellData* cdata =output->GetCellData();
     vtkFieldData* fdata = output->GetFieldData();
-
-    AddToVTKScalar(fdata,STEP,"STEP");
-    AddToVTKScalar(fdata,TIME,"TIME");
-
-
-
-    AddToVTKVector(cdata,VELOCITY,"VELOCITY");
-    AddToVTKVector(cdata,ANGULAR_VELOCITY,"ANGULAR_VELOCITY");
-    AddToVTKVector(cdata,FORCE,"FORCE");
-    AddToVTKVector(cdata,TORQUE,"TORQUE");
+    std::vector<int> STEPAS;
+    STEPAS.push_back(TIME_STEP);
+    std::vector<double> TIMES;
+    TIMES.push_back(TIME);
+    AddToVTKScalar(fdata,STEPAS,"STEP");
+    AddToVTKScalar(fdata,TIMES,"TIME");
 
     AddToVTKScalar(cdata,MATERIAL,"MATERIAL");
     AddToVTKScalar(cdata,FIX,"FIX");
-        AddToVTKScalar(cdata,POINTS_COUNT,"POINTS_COUNT");
-        AddToVTKScalar(cdata,FACE_COUNT,"FACE_COUNT");
+    if(file->exists("VELOCITY"))
+    {
+        std::vector<REAL4> HOST_VELOCITY;
+        ReadReal4Array(file,HOST_VELOCITY,PARTICLE_COUNT,"VELOCITY");
+        AddToVTKVector(cdata,HOST_VELOCITY,"VELOCITY");
+    }
+    if(file->exists("ANGULAR_VELOCITY"))
+    {
+        std::vector<REAL4> HOST_ANGULAR_VELOCITY;
+        ReadReal4Array(file,HOST_ANGULAR_VELOCITY,PARTICLE_COUNT,"ANGULAR_VELOCITY");
+        AddToVTKVector(cdata,HOST_ANGULAR_VELOCITY,"ANGULAR_VELOCITY");
+    }
+
+    if(file->exists("FORCE"))
+    {
+        std::vector<REAL4> HOST_FORCE;
+        ReadReal4Array(file,HOST_FORCE,PARTICLE_COUNT,"FORCE");
+        AddToVTKVector(cdata,HOST_FORCE,"FORCE");
+    }
+    if(file->exists("TORQUE"))
+    {
+        std::vector<REAL4> HOST_TORQUE;
+        ReadReal4Array(file,HOST_TORQUE,PARTICLE_COUNT,"TORQUE");
+        AddToVTKVector(cdata,HOST_TORQUE,"TORQUE");
+    }
+
+    if(file->exists("NN_COUNT"))
+    {
+        std::vector<int> HOST_NN_COUNT;
+        ReadIntArray(file,HOST_NN_COUNT,PARTICLE_COUNT,"NN_COUNT");
+        AddToVTKScalar(cdata,HOST_NN_COUNT,"NN_COUNT");
+    }
+    if(file->exists("PP_COUNT"))
+    {
+        std::vector<int> HOST_PP_COUNT;
+        ReadIntArray(file,HOST_PP_COUNT,PARTICLE_COUNT,"PP_COUNT");
+        AddToVTKScalar(cdata,HOST_PP_COUNT,"PP_COUNT");
+    }
+    if(file->exists("MASS"))
+    {
+        std::vector<int> HOST_MASS;
+        ReadIntArray(file,HOST_MASS,PARTICLE_COUNT,"MASS");
+        AddToVTKScalar(cdata,HOST_MASS,"MASS");
+    }
+    if(file->exists("VOLUME"))
+    {
+        std::vector<int> HOST_VOLUME;
+        ReadIntArray(file,HOST_VOLUME,PARTICLE_COUNT,"VOLUME");
+        AddToVTKScalar(cdata,HOST_VOLUME,"VOLUME");
+    }
+    delete file;
 
 
-    AddToVTKScalar(cdata,NN_COUNT,"NN_COUNT");
-    AddToVTKScalar(cdata,PP_COUNT,"PP_COUNT");
-    AddToVTKScalar(cdata,MASS,"MASS");
-    AddToVTKScalar(cdata,VOLUME,"VOLUME");
 
     output->Modified();
-    file.close();
     return 1;
 }
 
