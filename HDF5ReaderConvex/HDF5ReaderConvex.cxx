@@ -69,14 +69,12 @@ typedef struct
 {
     REAL4 POINTS[MAX_VERTICES];
 } CONVEX_POINTS_TYPE;
-typedef std::vector<CONVEX_POINTS_TYPE> CONVEX_POINTS_ARRAY;
 
 typedef struct
 {
     unsigned char FACE_VERTEX_COUNT[MAX_FACE_COUNT];
     unsigned char IDS[MAX_FACE_COUNT][MAX_VERTEX_COUNT_IN_FACE];
 } FACE_INFO_TYPE;
-typedef std::vector<FACE_INFO_TYPE> FACE_INFO_ARRAY;
 
 
 typedef struct
@@ -86,10 +84,43 @@ typedef struct
     unsigned char FIX;
     unsigned char MATERIAL;
 } PARTICLE_INFO_TYPE;
-typedef std::vector<PARTICLE_INFO_TYPE> PARTICLE_INFO_ARRAY;
-#include <hdf5.h>
 
+
+#define MAX_BOND_FACE_VERTICES 10
+typedef struct
+{
+    int ID1;
+    int ID2;
+    unsigned char STATE;
+    unsigned char TYPE;
+    unsigned char COUNT;
+    unsigned char PADDING;
+    unsigned char POINTS_A[MAX_BOND_FACE_VERTICES];
+    unsigned char POINTS_B[MAX_BOND_FACE_VERTICES];
+}BONDS_TYPE;
+
+#include <hdf5.h>
 #include "H5Cpp.h"
+
+
+auto ReadBondsInfo=[](H5::H5File* file,std::vector<BONDS_TYPE> &data,size_t COUNT)->void
+{
+    data.resize(COUNT);
+    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "BONDS" ));
+    H5::CompType mtype1( sizeof(BONDS_TYPE));
+    hsize_t dim2[] = {MAX_BOND_FACE_VERTICES};
+    auto array2_tid = H5Tarray_create(H5T_NATIVE_UCHAR, 1,dim2);
+    mtype1.insertMember( "ID1", HOFFSET(BONDS_TYPE, ID1), H5::PredType::NATIVE_INT);
+    mtype1.insertMember( "ID2", HOFFSET(BONDS_TYPE, ID2), H5::PredType::NATIVE_INT);
+    mtype1.insertMember( "STATE", HOFFSET(BONDS_TYPE, STATE), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "TYPE", HOFFSET(BONDS_TYPE, TYPE), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "COUNT", HOFFSET(BONDS_TYPE, COUNT), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "PADDING", HOFFSET(BONDS_TYPE, PADDING), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "POINTS_A", HOFFSET(BONDS_TYPE, POINTS_A), array2_tid);
+    mtype1.insertMember( "POINTS_B", HOFFSET(BONDS_TYPE, POINTS_B), array2_tid);
+    dataset->read( &data[0], mtype1 );
+    delete dataset;
+};
 
 auto ReadConvexPointsInfo=[](H5::H5File* file,std::vector<CONVEX_POINTS_TYPE> &data,size_t COUNT)->void
 {
@@ -261,7 +292,7 @@ HDF5ReaderConvex::HDF5ReaderConvex()
     this->FileName = NULL;
     this->DirectoryName = NULL;
     this->SetNumberOfInputPorts(0);
-    this->SetNumberOfOutputPorts(1);
+    this->SetNumberOfOutputPorts(2);
     this->times = vtkSmartPointer<vtkDoubleArray>::New();
     this->timesNames = vtkSmartPointer<vtkVariantArray>::New();
 }
@@ -277,9 +308,15 @@ int HDF5ReaderConvex::RequestData(
     vtkUnstructuredGrid *output = vtkUnstructuredGrid::SafeDownCast(
                 outInfo->Get(vtkDataObject::DATA_OBJECT()));
 
+
+    vtkInformation *outInfo1 = outputVector->GetInformationObject(1);
+    double requestedTime1 = outInfo1->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+    vtkUnstructuredGrid *BONDAI = vtkUnstructuredGrid::SafeDownCast(
+                outInfo1->Get(vtkDataObject::DATA_OBJECT()));
+
     std::string tempFilename=filenames[findClosestSolutionIndex(requestedTime)];
 
-
+    std::cout<<tempFilename<<"\n";
 
     std::vector<CONVEX_POINTS_TYPE> HOST_CONVEX_POINTS;
     std::vector<FACE_INFO_TYPE> HOST_FACE_INFO;
@@ -287,6 +324,7 @@ int HDF5ReaderConvex::RequestData(
 
     H5::H5File* file= new H5::H5File( tempFilename, H5F_ACC_RDONLY );
     size_t PARTICLE_COUNT=ReadIntAttribute(file,"PARTICLE_COUNT");
+    size_t BOND_COUNT=ReadIntAttribute(file,"BOND_COUNT");
     size_t TIME_STEP=ReadIntAttribute(file,"STEP");
     double TIME=ReadDoubleAttribute(file,"TIME");
 
@@ -396,10 +434,79 @@ int HDF5ReaderConvex::RequestData(
         ReadIntArray(file,HOST_VOLUME,PARTICLE_COUNT,"VOLUME");
         AddToVTKScalar(cdata,HOST_VOLUME,"VOLUME");
     }
+    cdata->SetActiveVectors("VELOCITY");
+    cdata->SetActiveScalars("FIX");
+
+
+
+
+
+
+    if(BOND_COUNT>0)
+    {
+        std::vector<BONDS_TYPE> HOST_BONDS;
+        ReadBondsInfo(file,HOST_BONDS,BOND_COUNT);
+        vtkPoints *pointsB = vtkPoints::New();
+        pointsB->SetNumberOfPoints(0);
+        pointsB->SetDataTypeToDouble();
+        BONDAI->Allocate(1000,1000);
+        std::vector<int> BOND_STATE(BOND_COUNT,0);
+        std::vector<int> BOND_TYPE(BOND_COUNT,0);
+        for(size_t i=0;i<BOND_COUNT;i++)
+        {
+            auto bond=HOST_BONDS[i];
+            BOND_STATE[i]=bond.STATE;
+            BOND_TYPE[i]=bond.TYPE;
+            auto P1=HOST_CONVEX_POINTS[bond.ID1];
+            auto P2=HOST_CONVEX_POINTS[bond.ID2];
+            vtkIdType PP[bond.COUNT];
+
+            for(size_t k=0;k<bond.COUNT;k++)
+            {
+                PP[k]=pointsB->GetNumberOfPoints();
+                pointsB->InsertNextPoint(
+                            (P1.POINTS[bond.POINTS_A[k]][0]+P2.POINTS[bond.POINTS_B[k]][0])*0.5,
+                            (P1.POINTS[bond.POINTS_A[k]][1]+P2.POINTS[bond.POINTS_B[k]][1])*0.5,
+                            (P1.POINTS[bond.POINTS_A[k]][2]+P2.POINTS[bond.POINTS_B[k]][2])*0.5);
+
+            }
+            BONDAI->InsertNextCell(VTK_POLYGON,bond.COUNT,PP);
+
+
+        }
+         BONDAI->SetPoints(pointsB);
+         vtkCellData* cbdata =BONDAI->GetCellData();
+         AddToVTKScalar(cbdata,BOND_STATE,"STATE");
+         cbdata->SetActiveScalars("STATE");
+         AddToVTKScalar(cbdata,BOND_TYPE,"TYPE");
+         if(file->exists("BONDS_FN"))
+         {
+             std::vector<REAL4> HOST_BONDS_FN;
+             ReadReal4Array(file,HOST_BONDS_FN,BOND_COUNT,"BONDS_FN");
+             for(int zz=0;zz<HOST_BONDS_FN.size();zz++)
+             {
+                 std::cout<<"zz "<<zz<<"  "<<HOST_BONDS_FN[zz][0]<<"  "<<HOST_BONDS_FN[zz][
+                            1]<<"  "<<HOST_BONDS_FN[zz][2]<<"  "<<HOST_BONDS_FN[zz][3]<<"\n";
+             }
+             AddToVTKVector(cbdata,HOST_BONDS_FN,"BONDS_FN");
+         }
+         if(file->exists("BONDS_FT"))
+         {
+             std::vector<REAL4> HOST_BONDS_FT;
+             ReadReal4Array(file,HOST_BONDS_FT,BOND_COUNT,"BONDS_FT");
+             AddToVTKVector(cbdata,HOST_BONDS_FT,"BONDS_FT");
+         }
+
+
+
+    }
+
+
+
     delete file;
 
 
-
+    BONDAI->Modified();
     output->Modified();
     return 1;
 }
