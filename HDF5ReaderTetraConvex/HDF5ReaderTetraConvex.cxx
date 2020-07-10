@@ -1,4 +1,4 @@
-#include "HDF5ReaderConvex.h"
+#include "HDF5ReaderTetraConvex.h"
 
 #include "vtkObjectFactory.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
@@ -39,13 +39,17 @@
 #include <numeric>
 #include <vector>
 #include <vtkTetra.h>
+#define GetParticleFix(x) (x >> 24) & 0xFF
+#define GetParticleWall(x) (x >> 16) & 0xFF
+#define GetParticleMaterial(x) (x >> 8) & 0xFF
+#define GetParticleLaisvas(x) x  & 0xFF
 
 #include <boost/array.hpp>
 typedef boost::array<double,4> REAL4;
 typedef boost::array<int,4> INT4;
 typedef boost::array<int,2> INT2;
 namespace fs = std::experimental::filesystem;
-vtkIdType HDF5ReaderConvex::findClosestSolutionIndex(double Time)
+vtkIdType HDF5ReaderTetraConvex::findClosestSolutionIndex(double Time)
 {
     double dt=1e24;
     vtkIdType ti=0;//time index
@@ -61,96 +65,31 @@ vtkIdType HDF5ReaderConvex::findClosestSolutionIndex(double Time)
     return ti;
 }
 
-
-#define MAX_FACE_COUNT 6
-#define MAX_VERTEX_COUNT_IN_FACE 8
-#define MAX_VERTICES 12
-typedef struct
-{
-    REAL4 POINTS[MAX_VERTICES];
-} CONVEX_POINTS_TYPE;
-
-typedef struct
-{
-    unsigned char FACE_VERTEX_COUNT[MAX_FACE_COUNT];
-    unsigned char IDS[MAX_FACE_COUNT][MAX_VERTEX_COUNT_IN_FACE];
-} FACE_INFO_TYPE;
-
-
-typedef struct
-{
-    unsigned char VERTEX_COUNT;
-    unsigned char FACE_COUNT;
-    unsigned char FIX;
-    unsigned char MATERIAL;
-} PARTICLE_INFO_TYPE;
-
-
-#define MAX_BOND_FACE_VERTICES 10
-typedef struct
-{
-    int ID1;
-    int ID2;
-    unsigned char STATE;
-    unsigned char TYPE;
-    unsigned char COUNT;
-    unsigned char PADDING;
-    unsigned char POINTS_A[MAX_BOND_FACE_VERTICES];
-    unsigned char POINTS_B[MAX_BOND_FACE_VERTICES];
-}BONDS_TYPE;
-
 #include <hdf5.h>
 #include "H5Cpp.h"
 
-
-auto ReadBondsInfo=[](H5::H5File* file,std::vector<BONDS_TYPE> &data,size_t COUNT)->void
+typedef struct
 {
-    data.resize(COUNT);
-    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "BONDS" ));
-    H5::CompType mtype1( sizeof(BONDS_TYPE));
-    hsize_t dim2[] = {MAX_BOND_FACE_VERTICES};
-    auto array2_tid = H5Tarray_create(H5T_NATIVE_UCHAR, 1,dim2);
-    mtype1.insertMember( "ID1", HOFFSET(BONDS_TYPE, ID1), H5::PredType::NATIVE_INT);
-    mtype1.insertMember( "ID2", HOFFSET(BONDS_TYPE, ID2), H5::PredType::NATIVE_INT);
-    mtype1.insertMember( "STATE", HOFFSET(BONDS_TYPE, STATE), H5::PredType::NATIVE_UCHAR);
-    mtype1.insertMember( "TYPE", HOFFSET(BONDS_TYPE, TYPE), H5::PredType::NATIVE_UCHAR);
-    mtype1.insertMember( "COUNT", HOFFSET(BONDS_TYPE, COUNT), H5::PredType::NATIVE_UCHAR);
-    mtype1.insertMember( "PADDING", HOFFSET(BONDS_TYPE, PADDING), H5::PredType::NATIVE_UCHAR);
-    mtype1.insertMember( "POINTS_A", HOFFSET(BONDS_TYPE, POINTS_A), array2_tid);
-    mtype1.insertMember( "POINTS_B", HOFFSET(BONDS_TYPE, POINTS_B), array2_tid);
-    dataset->read( &data[0], mtype1 );
+    unsigned char FIX;
+    unsigned char MATERIAL;
+    unsigned char WALL;
+    unsigned char LAISVAS;
+} PARTICLE_INFO_TYPE;
+typedef std::vector<PARTICLE_INFO_TYPE> PARTICLE_INFO_ARRAY;
+
+auto WriteParticleInfo=[](H5::H5File* file,std::vector<PARTICLE_INFO_TYPE> &data,size_t COUNT)->void
+{
+    hsize_t dim[] = {COUNT};
+    H5::DataSpace space( 1, dim );
+    H5::CompType mtype1( sizeof(PARTICLE_INFO_TYPE) );
+    mtype1.insertMember( "FIX", HOFFSET(PARTICLE_INFO_TYPE, FIX), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "MATERIAL", HOFFSET(PARTICLE_INFO_TYPE, MATERIAL), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "WALL", HOFFSET(PARTICLE_INFO_TYPE, WALL), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "LAISVAS", HOFFSET(PARTICLE_INFO_TYPE, LAISVAS), H5::PredType::NATIVE_UCHAR);
+    H5::DataSet* dataset = new H5::DataSet(file->createDataSet("PARTICLE_INFO", mtype1, space));
+    dataset->write( &data[0], mtype1 );
     delete dataset;
 };
-
-auto ReadConvexPointsInfo=[](H5::H5File* file,std::vector<CONVEX_POINTS_TYPE> &data,size_t COUNT)->void
-{
-    data.resize(COUNT);
-    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "CONVEX_POINTS" ));
-    H5::CompType mtype1( sizeof(CONVEX_POINTS_TYPE));
-    hsize_t dim2[] = {MAX_VERTICES,4};
-    auto array2_tid = H5Tarray_create(H5T_NATIVE_DOUBLE, 2,dim2);
-    mtype1.insertMember( "POINTS", HOFFSET(CONVEX_POINTS_TYPE, POINTS), array2_tid);
-    dataset->read( &data[0], mtype1 );
-    delete dataset;
-};
-
-
-
-auto ReadFaceInfo=[](H5::H5File* file,std::vector<FACE_INFO_TYPE> &data,size_t COUNT)->void
-{
-    data.resize(COUNT);
-    H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "FACE_INFO" ));
-    H5::CompType mtype1( sizeof(FACE_INFO_TYPE) );
-    hsize_t dim1[] = {MAX_FACE_COUNT};
-    auto array1_tid = H5Tarray_create(H5T_NATIVE_UCHAR, 1,dim1);
-    hsize_t dim2[] = {MAX_FACE_COUNT,MAX_VERTEX_COUNT_IN_FACE};
-    auto array2_tid = H5Tarray_create(H5T_NATIVE_UCHAR, 2,dim2);
-    mtype1.insertMember( "FACE_VERTEX_COUNT", HOFFSET(FACE_INFO_TYPE, FACE_VERTEX_COUNT), array1_tid);
-    mtype1.insertMember( "IDS", HOFFSET(FACE_INFO_TYPE, IDS), array2_tid);
-    dataset->read( &data[0], mtype1 );
-    delete dataset;
-};
-
 
 
 auto ReadParticleInfo=[](H5::H5File* file,std::vector<PARTICLE_INFO_TYPE> &data,size_t COUNT)->void
@@ -158,10 +97,10 @@ auto ReadParticleInfo=[](H5::H5File* file,std::vector<PARTICLE_INFO_TYPE> &data,
     data.resize(COUNT);
     H5::DataSet* dataset = new H5::DataSet (file->openDataSet( "PARTICLE_INFO" ));
     H5::CompType mtype1( sizeof(PARTICLE_INFO_TYPE) );
-    mtype1.insertMember( "VERTEX_COUNT", HOFFSET(PARTICLE_INFO_TYPE, VERTEX_COUNT), H5::PredType::NATIVE_UCHAR);
-    mtype1.insertMember( "FACE_COUNT", HOFFSET(PARTICLE_INFO_TYPE, FACE_COUNT), H5::PredType::NATIVE_UCHAR);
     mtype1.insertMember( "FIX", HOFFSET(PARTICLE_INFO_TYPE, FIX), H5::PredType::NATIVE_UCHAR);
     mtype1.insertMember( "MATERIAL", HOFFSET(PARTICLE_INFO_TYPE, MATERIAL), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "WALL", HOFFSET(PARTICLE_INFO_TYPE, WALL), H5::PredType::NATIVE_UCHAR);
+    mtype1.insertMember( "LAISVAS", HOFFSET(PARTICLE_INFO_TYPE, LAISVAS), H5::PredType::NATIVE_UCHAR);
     dataset->read( &data[0], mtype1 );
     delete dataset;
 };
@@ -284,10 +223,10 @@ void AddToVTKVector(vtkFieldData *location,std::vector<REAL4>&array,std::string 
 
 
 
-vtkStandardNewMacro(HDF5ReaderConvex);
+vtkStandardNewMacro(HDF5ReaderTetraConvex);
 
 
-HDF5ReaderConvex::HDF5ReaderConvex()
+HDF5ReaderTetraConvex::HDF5ReaderTetraConvex()
 {
     this->FileName = NULL;
     this->DirectoryName = NULL;
@@ -297,7 +236,7 @@ HDF5ReaderConvex::HDF5ReaderConvex()
     this->timesNames = vtkSmartPointer<vtkVariantArray>::New();
 }
 
-int HDF5ReaderConvex::RequestData(
+int HDF5ReaderTetraConvex::RequestData(
         vtkInformation *vtkNotUsed(request),
         vtkInformationVector **vtkNotUsed(inputVector),
         vtkInformationVector *outputVector)
@@ -311,97 +250,89 @@ int HDF5ReaderConvex::RequestData(
 
     std::string tempFilename=filenames[findClosestSolutionIndex(requestedTime)];
 
-    std::cout<<"HDF5ReaderConvex "<<tempFilename<<"\n";
+    std::cout<<"cia as "<<tempFilename<<"\n";
 
 
-    std::vector<CONVEX_POINTS_TYPE> HOST_CONVEX_POINTS_INIT;
+    std::vector<REAL4> HOST_POINTS_INIT;
     {
         H5::H5File* fileInit= new H5::H5File( filenames[0], H5F_ACC_RDONLY );
         size_t PARTICLE_COUNT=ReadIntAttribute(fileInit,"PARTICLE_COUNT");
-        ReadConvexPointsInfo(fileInit,HOST_CONVEX_POINTS_INIT,PARTICLE_COUNT);
+        ReadReal4Array(fileInit,HOST_POINTS_INIT,PARTICLE_COUNT*4,"POINTS");
         delete fileInit;
 
     }
 
 
 
-    std::vector<CONVEX_POINTS_TYPE> HOST_CONVEX_POINTS;
-    std::vector<FACE_INFO_TYPE> HOST_FACE_INFO;
-    std::vector<PARTICLE_INFO_TYPE> HOST_PARTICLE_INFO;
-
-
-
     H5::H5File* file= new H5::H5File( tempFilename, H5F_ACC_RDONLY );
     size_t PARTICLE_COUNT=ReadIntAttribute(file,"PARTICLE_COUNT");
-    size_t BOND_COUNT=ReadIntAttribute(file,"BOND_COUNT");
     size_t TIME_STEP=ReadIntAttribute(file,"STEP");
     double TIME=ReadDoubleAttribute(file,"TIME");
 
-    ReadConvexPointsInfo(file,HOST_CONVEX_POINTS,PARTICLE_COUNT);
-    ReadParticleInfo(file,HOST_PARTICLE_INFO,PARTICLE_COUNT);
-    ReadFaceInfo(file,HOST_FACE_INFO,PARTICLE_COUNT);
+    std::vector<REAL4> HOST_POINTS;
+    std::vector<PARTICLE_INFO_TYPE> HOST_INFO;
+
+    ReadReal4Array(file,HOST_POINTS,PARTICLE_COUNT*4,"POINTS");
+    ReadParticleInfo(file,HOST_INFO,PARTICLE_COUNT);
 
     std::vector<int> FIX(PARTICLE_COUNT,0);
     std::vector<int> MATERIAL(PARTICLE_COUNT,0);
-    vtkPoints *points = vtkPoints::New();
+    std::vector<int> WALL(PARTICLE_COUNT,0);
+    std::vector<int> LAISVAS(PARTICLE_COUNT,0);
+     vtkPoints *points = vtkPoints::New();
     points->SetNumberOfPoints(0);
-    points->SetDataTypeToDouble();
-    output->Allocate(1000,1000);
+     points->SetDataTypeToDouble();
+     output->Allocate(1000,1000);
+     output->SetPoints(points);
     std::vector<REAL4> DISPLACEMENT;
     DISPLACEMENT.resize(PARTICLE_COUNT);
-    auto CalcCentroid=[](CONVEX_POINTS_TYPE& CPOINTS,PARTICLE_INFO_TYPE &CINFO)->REAL4
+    auto CalcCentroid=[](REAL4 P1,REAL4 P2,REAL4 P3,REAL4 P4)->REAL4
     {
         REAL4 center=(REAL4){0,0,0,0};
-        for(int i=0;i<CINFO.VERTEX_COUNT;i++)
+        for(int i=0;i<3;i++)
         {
-            center[0]+=CPOINTS.POINTS[i][0];
-            center[1]+=CPOINTS.POINTS[i][1];
-            center[2]+=CPOINTS.POINTS[i][2];
+            center[i]=(P1[i]+P2[i]+P3[i]+P4[i])/4.0;
         }
-        center[0]/=CINFO.VERTEX_COUNT;
-        center[1]/=CINFO.VERTEX_COUNT;
-        center[2]/=CINFO.VERTEX_COUNT;
+
         return center;
 
     };
+
     for(size_t i=0;i<PARTICLE_COUNT;i++)
     {
-        CONVEX_POINTS_TYPE CPOINTS=HOST_CONVEX_POINTS[i];
-        FACE_INFO_TYPE CFACE=HOST_FACE_INFO[i];
-        PARTICLE_INFO_TYPE CINFO=HOST_PARTICLE_INFO[i];
-        FIX[i]=CINFO.FIX;
-        MATERIAL[i]=CINFO.MATERIAL;
-        int pointStart=points->GetNumberOfPoints();
-        vtkIdType dodechedronPointsIds[CINFO.VERTEX_COUNT];
-        for(size_t z=0;z<CINFO.VERTEX_COUNT;z++)
-        {
-            dodechedronPointsIds[z]=points->GetNumberOfPoints();
-            points->InsertNextPoint(CPOINTS.POINTS[z][0],CPOINTS.POINTS[z][1],CPOINTS.POINTS[z][2]);
-        }
-        REAL4 INIT_CENTER=CalcCentroid(HOST_CONVEX_POINTS_INIT[i],CINFO);
-        REAL4 CENTER=CalcCentroid(CPOINTS,CINFO);
+        REAL4 P1=HOST_POINTS[i*4+0];
+        REAL4 P2=HOST_POINTS[i*4+1];
+        REAL4 P3=HOST_POINTS[i*4+2];
+        REAL4 P4=HOST_POINTS[i*4+3];
+
+
+        REAL4 IP1=HOST_POINTS_INIT[i*4+0];
+        REAL4 IP2=HOST_POINTS_INIT[i*4+1];
+        REAL4 IP3=HOST_POINTS_INIT[i*4+2];
+        REAL4 IP4=HOST_POINTS_INIT[i*4+3];
+        PARTICLE_INFO_TYPE info=HOST_INFO[i];
+
+
+        FIX[i]=info.FIX;
+        MATERIAL[i]=info.MATERIAL;
+        WALL[i]=info.WALL;
+        LAISVAS[i]=info.LAISVAS;
+
+        REAL4 INIT_CENTER=CalcCentroid(IP1,IP2,IP3,IP4);
+        REAL4 CENTER=CalcCentroid(P1,P2,P3,P4);
         CENTER[0]=CENTER[0]-INIT_CENTER[0];
         CENTER[1]=CENTER[1]-INIT_CENTER[1];
         CENTER[2]=CENTER[2]-INIT_CENTER[2];
         DISPLACEMENT[i]=CENTER;
 
 
-
-
-
-
-        vtkSmartPointer<vtkCellArray> dodechedronFaces =vtkSmartPointer<vtkCellArray>::New();
-
-        for (size_t z = 0; z < CINFO.FACE_COUNT; z++)
-        {
-            dodechedronFaces->InsertNextCell(CFACE.FACE_VERTEX_COUNT[z]);
-            for(size_t k=0;k<CFACE.FACE_VERTEX_COUNT[z];k++)
-                dodechedronFaces->InsertCellPoint(CFACE.IDS[z][k]+pointStart);
-        }
-
-        output->InsertNextCell(VTK_POLYHEDRON,
-                               CINFO.VERTEX_COUNT, dodechedronPointsIds,
-                               CINFO.FACE_COUNT, dodechedronFaces->GetPointer());
+        int offsetas=points->GetNumberOfPoints();
+        points->InsertNextPoint(P1[0],P1[1],P1[2]);
+        points->InsertNextPoint(P2[0],P2[1],P2[2]);
+        points->InsertNextPoint(P3[0],P3[1],P3[2]);
+        points->InsertNextPoint(P4[0],P4[1],P4[2]);
+        vtkIdType ptIds[] = {offsetas, offsetas+1, offsetas+2, offsetas+3};
+        output->InsertNextCell( VTK_TETRA, 4, ptIds );
     }
 
 
@@ -420,6 +351,8 @@ int HDF5ReaderConvex::RequestData(
 
     AddToVTKScalar(cdata,MATERIAL,"MATERIAL");
     AddToVTKScalar(cdata,FIX,"FIX");
+    AddToVTKScalar(cdata,WALL,"WALL");
+    AddToVTKScalar(cdata,LAISVAS,"LAISVAS");
 
     AddToVTKVector(cdata,DISPLACEMENT,"DISPLACEMENT");
     if(file->exists("VELOCITY"))
@@ -488,7 +421,7 @@ int HDF5ReaderConvex::RequestData(
     return 1;
 }
 
-void HDF5ReaderConvex::PrintSelf(ostream& os, vtkIndent indent)
+void HDF5ReaderTetraConvex::PrintSelf(ostream& os, vtkIndent indent)
 {
     this->Superclass::PrintSelf(os,indent);
 
@@ -512,7 +445,7 @@ std::vector<std::string> split(const std::string& str, const std::string& delim)
     return tokens;
 }
 
-int HDF5ReaderConvex::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInformationVector **vtkNotUsed(inputVector), vtkInformationVector *outputVector)
+int HDF5ReaderTetraConvex::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInformationVector **vtkNotUsed(inputVector), vtkInformationVector *outputVector)
 {
     if (!this->FileName || strlen(this->FileName) == 0)
     {
@@ -521,11 +454,11 @@ int HDF5ReaderConvex::RequestInformation(vtkInformation *vtkNotUsed(request), vt
     }
     filenames.resize(0,"");
     std::string fileStringStart=fs::path(FileName).filename().string().substr(0,fs::path(FileName).filename().string().length()-12);
-    std::cout<<fs::path(FileName).parent_path()<<"   "<<FileName<<"  "<<fileStringStart<<"\n";
+    std::cout<<"HDF5ReaderTetraConvex "<<fs::path(FileName).parent_path()<<"   "<<FileName<<"  "<<fileStringStart<<"\n";
 
     for(auto& p: fs::directory_iterator(fs::path(FileName).parent_path()))
     {
-        if (p.path().string().find(".ch5") != std::string::npos)
+        if (p.path().string().find(".th5") != std::string::npos)
             if (p.path().string().find(fileStringStart) != std::string::npos) {
 
                 filenames.push_back(p.path().string());
