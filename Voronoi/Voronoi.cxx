@@ -1,7 +1,7 @@
 #include "vtkObjectFactory.h" //for new() macro
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkPolyData.h"
+#include "vtkUnstructuredGrid.h"
 #include "vtkSmartPointer.h"
 #include "vtkCellArray.h"
 #include "vtkUnstructuredGrid.h"
@@ -11,7 +11,7 @@
 #include "vtkDoubleArray.h"
 #include "Voronoi.h"
 #include "vtkPolygon.h"
-
+#include "vtkIntArray.h"
 
 vtkStandardNewMacro(Voronoi);
 
@@ -68,56 +68,56 @@ Voronoi::~Voronoi()
 //----------------------------------------------------------------------------
 void Voronoi::AddSourceConnection(vtkAlgorithmOutput* input)
 {
-  this->AddInputConnection(1, input);
+    this->AddInputConnection(1, input);
 }
 
 
 //----------------------------------------------------------------------------
 void Voronoi::RemoveAllSources()
 {
-  this->SetInputConnection(1, 0);
+    this->SetInputConnection(1, 0);
 }
 
 
 //----------------------------------------------------------------------------
 int Voronoi::FillInputPortInformation( int port, vtkInformation* info )
 {
-  if (!this->Superclass::FillInputPortInformation(port, info))
+    if (!this->Superclass::FillInputPortInformation(port, info))
     {
+        return 0;
+    }
+    if ( port == 0 )
+    {
+        //info->Set( vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkUnstructuredGrid" );
+        info->Set( vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet" );
+        return 1;
+    }
     return 0;
-    }
-  if ( port == 0 )
-    {
-    //info->Set( vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData" );
-    info->Set( vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataSet" );
-    return 1;
-    }
-  return 0;
 }
 
 
 //----------------------------------------------------------------------------
 int Voronoi::RequestData(vtkInformation *vtkNotUsed(request),
-                              vtkInformationVector **inputVector,
-                              vtkInformationVector *outputVector)
+                         vtkInformationVector **inputVector,
+                         vtkInformationVector *outputVector)
 {
-  // get the info objects
-  vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
-  vtkInformation *outInfo = outputVector->GetInformationObject(0);
+    // get the info objects
+    vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
+    vtkInformation *outInfo = outputVector->GetInformationObject(0);
 
-  // get the input and output
-//  vtkPolyData *input = vtkPolyData::SafeDownCast(
-  vtkDataSet *input = vtkDataSet::SafeDownCast(
-                                               inInfo->Get(vtkDataObject::DATA_OBJECT()));
-  vtkPolyData *output = vtkPolyData::SafeDownCast(
-                                                  outInfo->Get(vtkDataObject::DATA_OBJECT()));
+    // get the input and output
+    //  vtkUnstructuredGrid *input = vtkUnstructuredGrid::SafeDownCast(
+    vtkDataSet *input = vtkDataSet::SafeDownCast(
+                inInfo->Get(vtkDataObject::DATA_OBJECT()));
+    vtkUnstructuredGrid *output = vtkUnstructuredGrid::SafeDownCast(
+                outInfo->Get(vtkDataObject::DATA_OBJECT()));
+    output->Allocate(1000,1000);
 
 
+    double * bounds=input->GetBounds();
 
-   double * bounds=input->GetBounds();
-
-   double *maxr=input->GetPointData()->GetArray("RADIUS")->GetRange();
-   double R=maxr[1];
+    double *maxr=input->GetPointData()->GetArray("RADIUS")->GetRange();
+    double R=maxr[1]*2;
     bounds[0]=bounds[0]-R;
     bounds[1]=bounds[1]+R;
 
@@ -127,24 +127,24 @@ int Voronoi::RequestData(vtkInformation *vtkNotUsed(request),
     bounds[4]=bounds[4]-R;
     bounds[5]=bounds[5]+R;
 
- container_poly c(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], 8, 8, 8, false, false, false, 8);
-  cele3d *faces = new cele3d[input->GetNumberOfPoints()];
-  for (int i = 0; i < input->GetNumberOfPoints(); ++i) {
-      c.put(i,input->GetPoint(i)[0],input->GetPoint(i)[1],input->GetPoint(i)[2],input->GetPointData()->GetArray("RADIUS")->GetTuple1(i));
-      faces[i].nrfaces = 0;
-      faces[i].id = i;
-      faces[i].nrvertext = 0;
-  }
-  c.print_all_custom("%i %w %s %a %n %t %P", faces);
+    container_poly c(bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5], 8, 8, 8, false, false, false, 8);
+    cele3d *faces = new cele3d[input->GetNumberOfPoints()];
+    for (int i = 0; i < input->GetNumberOfPoints(); ++i) {
+        c.put(i,input->GetPoint(i)[0],input->GetPoint(i)[1],input->GetPoint(i)[2],input->GetPointData()->GetArray("RADIUS")->GetTuple1(i));
+        faces[i].nrfaces = 0;
+        faces[i].id = i;
+        faces[i].nrvertext = 0;
+    }
+    c.print_all_custom("%i %w %s %a %n %t %P", faces);
 
 
 
 
 
 
-  vtkSmartPointer<vtkPoints> points=vtkSmartPointer<vtkPoints>::New();
+    vtkSmartPointer<vtkPoints> points=vtkSmartPointer<vtkPoints>::New();
     vtkSmartPointer<vtkCellArray> cells=vtkSmartPointer<vtkCellArray>::New();
-    vtkSmartPointer<vtkDoubleArray> area=vtkSmartPointer<vtkDoubleArray>::New();
+   /* vtkSmartPointer<vtkDoubleArray> area=vtkSmartPointer<vtkDoubleArray>::New();
     area->SetName("AREA");
     area->SetNumberOfComponents(1);
     vtkSmartPointer<vtkDoubleArray> L1=vtkSmartPointer<vtkDoubleArray>::New();
@@ -153,57 +153,81 @@ int Voronoi::RequestData(vtkInformation *vtkNotUsed(request),
     vtkSmartPointer<vtkDoubleArray> L2=vtkSmartPointer<vtkDoubleArray>::New();
     L2->SetName("L2");
     L2->SetNumberOfComponents(1);
+    */
+
+    vtkSmartPointer<vtkIntArray> FACE_COUNT=vtkSmartPointer<vtkIntArray>::New();
+    FACE_COUNT->SetName("FACE_COUNT");
+    FACE_COUNT->SetNumberOfComponents(1);
+
+    vtkSmartPointer<vtkIntArray> VERTICES_COUNT=vtkSmartPointer<vtkIntArray>::New();
+    VERTICES_COUNT->SetName("VERTICES_COUNT");
+    VERTICES_COUNT->SetNumberOfComponents(1);
+
+    vtkSmartPointer<vtkIntArray> MAX_VERTICES_PER_FACE=vtkSmartPointer<vtkIntArray>::New();
+    MAX_VERTICES_PER_FACE->SetName("MAX_VERTICES_PER_FACE");
+    MAX_VERTICES_PER_FACE->SetNumberOfComponents(1);
 
 
 
-    for (int i = 0; i < input->GetNumberOfPoints(); ++i) {
-        int offset=points->GetNumberOfPoints();
 
-        for(int k=0;k<faces[i].nrvertext;k++)
+
+
+
+    for(size_t i=0;i<input->GetNumberOfPoints();i++)
+    {
+
+//std::cout<<"particle i "<<i<<"\n";
+        int pointStart=points->GetNumberOfPoints();
+        int maxas=0;
+        vtkIdType dodechedronPointsIds[faces[i].nrvertext];
+        for(size_t k=0;k<faces[i].nrvertext;k++)
         {
-         points->InsertNextPoint(faces[i].vertexes[k][0],faces[i].vertexes[k][1],faces[i].vertexes[k][2]);
-
+            dodechedronPointsIds[k]=points->GetNumberOfPoints();
+            points->InsertNextPoint(faces[i].vertexes[k][0],faces[i].vertexes[k][1],faces[i].vertexes[k][2]);
         }
-           for(int k=0;k<faces[i].nrfaces;k++)
-           {
-               if(faces[i].kaimynai[k]<0) continue;
-           //    if(faces[i].facevertextnr[k]!=4)continue;
+        vtkSmartPointer<vtkCellArray> dodechedronFaces =vtkSmartPointer<vtkCellArray>::New();
 
-               cells->InsertNextCell(faces[i].facevertextnr[k]);
-                              vtkSmartPointer<vtkPoints> points1=vtkSmartPointer<vtkPoints>::New();
-                  for(int z=0;z<faces[i].facevertextnr[k];z++)
-                  {
-                    cells->InsertCellPoint(offset+faces[i].faceorder[k][z]);
-                    int hh=faces[i].faceorder[k][z];
-                     points1->InsertNextPoint(faces[i].vertexes[hh][0],faces[i].vertexes[hh][1],faces[i].vertexes[hh][2]);
-                  }
-                  vtkPolygon*poly=vtkPolygon::New();
-                  poly->Initialize(faces[i].facevertextnr[k],points1);
-                  //std::cout<<poly->ComputeArea()<<"\n";
-                  area->InsertNextTuple1(poly->ComputeArea());
-                  poly->Delete();
-/*
-                  double p1[3];
-                  double p2[3];
-                  double p3[3];
-                  double p4[3];
-                  points1->GetPoint(0,p1);
-                  points1->GetPoint(1,p2);
-                  points1->GetPoint(2,p3);
-                  points1->GetPoint(3,p4);
-                  L1->InsertNextTuple1(sqrt((p1[0]-p3[0])*(p1[0]-p3[0])+(p1[1]-p3[1])*(p1[1]-p3[1])+(p1[2]-p3[2])*(p1[2]-p3[2])));
-                  L2->InsertNextTuple1(sqrt((p2[0]-p4[0])*(p2[0]-p4[0])+(p2[1]-p4[1])*(p2[1]-p4[1])+(p2[2]-p4[2])*(p2[2]-p4[2])));*/
+        for (size_t z = 0; z < faces[i].nrfaces; z++)
+        {
+           // if(faces[i].kaimynai[z]<0)continue;
+            if(maxas<faces[i].facevertextnr[z]) maxas=faces[i].facevertextnr[z];
+            dodechedronFaces->InsertNextCell(faces[i].facevertextnr[z]);
+            for(size_t k=0;k<faces[i].facevertextnr[z];k++)
+                dodechedronFaces->InsertCellPoint(faces[i].faceorder[z][k]+pointStart);
+        }
 
-           }
+        output->InsertNextCell(VTK_POLYHEDRON,
+                               faces[i].nrvertext, dodechedronPointsIds,
+                               faces[i].nrfaces, dodechedronFaces->GetPointer());
+         MAX_VERTICES_PER_FACE->InsertNextTuple1(maxas);
+         VERTICES_COUNT->InsertNextTuple1(faces[i].nrvertext);
+         FACE_COUNT->InsertNextTuple1(faces[i].nrfaces);
     }
-  output->SetPoints(points);
-  output->SetPolys(cells);
-  output->GetCellData()->SetScalars(area);
-  //output->GetCellData()->AddArray(L1);
-  //output->GetCellData()->AddArray(L2);
-delete[ ]faces;
 
-  return 1;
+
+
+
+
+
+
+
+
+
+
+
+
+
+    output->SetPoints(points);
+    // output->SetPolys(cells);
+    //output->GetCellData()->SetScalars(area);
+    output->GetCellData()->AddArray(MAX_VERTICES_PER_FACE);
+    output->GetCellData()->AddArray(VERTICES_COUNT);
+    output->GetCellData()->AddArray(FACE_COUNT);
+    //output->GetCellData()->AddArray(L1);
+    //output->GetCellData()->AddArray(L2);
+    delete[ ]faces;
+
+    return 1;
 }
 
 

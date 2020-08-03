@@ -3,32 +3,33 @@
 
 #include "vtkSmartPointer.h" // compiler errors if this is forward declared
 
-#include "vtkPolyDataAlgorithm.h" //superclass
-#include "vtkPolyDataAlgorithm.h"
+#include "vtkUnstructuredGridAlgorithm.h" //superclass
+#include "vtkUnstructuredGridAlgorithm.h"
+#include "vtkUnstructuredGridAlgorithm.h"
 #include "vtkExecutive.h"
 
-class vtkPolyData;
+class vtkUnstructuredGrid;
 class vtkTransform;
 class vtkInformation;
 class vtkInformationVector;
 class vtkIterativeClosestPointTransform;
 
-#include "vtkMath.h"
 
-class Voronoi : public vtkPolyDataAlgorithm
+
+class Voronoi : public vtkUnstructuredGridAlgorithm
 {
  public:
   static Voronoi *New();
-  vtkTypeMacro(Voronoi, vtkPolyDataAlgorithm);
+  vtkTypeMacro(Voronoi, vtkUnstructuredGridAlgorithm);
   void PrintSelf(ostream &os, vtkIndent indent);
 
   // Description:
   // Specify the source object. This is the object that will be moved during the transformation.
-//  vtkPolyData *GetSource();
+//  vtkUnstructuredGrid *GetSource();
 
   // Description:
   // Specify the target object. This is the object that will stay in place.
-//  vtkPolyData *GetTarget();
+//  vtkUnstructuredGrid *GetTarget();
 
   void AddSourceConnection(vtkAlgorithmOutput* input);
   void RemoveAllSources();
