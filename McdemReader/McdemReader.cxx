@@ -1,4 +1,4 @@
-#include "McsdemReader.h"
+#include "McdemReader.h"
 
 #include "vtkObjectFactory.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
@@ -124,7 +124,7 @@ auto normalize=[](REAL4 A)->REAL4
     return A;
 };
 
-auto CreatePlaneCUT=[](REAL4 FacePoint,const REAL4 CENTROID)->REAL4
+auto CreatePlaneCUT=[](const REAL4 FacePoint,const REAL4 CENTROID)->REAL4
 {
     //REAL4 PLANE=normalize(REAL4({FacePoint[0]-CENTROID[0],FacePoint[1]-CENTROID[1],FacePoint[2]-CENTROID[2],0}));
     REAL4 PLANE=normalize(REAL4({FacePoint[0],FacePoint[1],FacePoint[2],0}));
@@ -132,13 +132,13 @@ auto CreatePlaneCUT=[](REAL4 FacePoint,const REAL4 CENTROID)->REAL4
     //PLANE[1]*=-1;
     //PLANE[2]*=-1;
     PLANE[3]=0;
-
-    FacePoint[0]+=CENTROID[0];
-    FacePoint[1]+=CENTROID[1];
-    FacePoint[2]+=CENTROID[2];
-    PLANE[3]=dot(FacePoint,PLANE);
+REAL4 FacePoint1=FacePoint;
+    FacePoint1[0]+=CENTROID[0];
+    FacePoint1[1]+=CENTROID[1];
+    FacePoint1[2]+=CENTROID[2];
+    PLANE[3]=dot(FacePoint1,PLANE);
     //PrintREAL4("CENTROID",CENTROID);
-    // PrintREAL4("FacePoint",FacePoint);
+   // PrintREAL4("FacePoint",FacePoint);
     //PrintREAL4("CreatePlane ",PLANE);
     return PLANE;
 };
@@ -164,12 +164,13 @@ auto RotatePointQuarterion=[](REAL4 u,REAL4 v)->REAL4
 
 
 
+
 #define MAX_VERTICES_IN_FACE 32
 #define SURFACE_MAX_SIZE 1000
-auto CreateFace=[](const REAL4 CENTER,const std::vector<REAL4> FACE_POINTS,int faceCount,int faceID,int &COUNT)->std::vector<REAL4>
+auto CreateFace=[](const REAL4 CENTER,const std::vector<REAL4> FACE_POINTS,int faceCount,int faceID,int &COUNT,REAL4 QUART)->std::vector<REAL4>
 {
     REAL4 NORMAL=normalize(FACE_POINTS[faceID]);
-    REAL scale=dot(FACE_POINTS[faceID],NORMAL);
+    REAL scale=-dot(FACE_POINTS[faceID],NORMAL);
     REAL4 POINTS[MAX_VERTICES_IN_FACE];
     REAL4 POINTS_CV[MAX_VERTICES_IN_FACE];
     COUNT=4;
@@ -204,6 +205,12 @@ auto CreateFace=[](const REAL4 CENTER,const std::vector<REAL4> FACE_POINTS,int f
     POINTS[1]=RotatePointQuarterion(q,POINTS[1]);
     POINTS[2]=RotatePointQuarterion(q,POINTS[2]);
     POINTS[3]=RotatePointQuarterion(q,POINTS[3]);
+
+
+  //  POINTS[0]=RotatePointQuarterion(QUART,POINTS[0]);
+   // POINTS[1]=RotatePointQuarterion(QUART,POINTS[1]);
+    //POINTS[2]=RotatePointQuarterion(QUART,POINTS[2]);
+//    POINTS[3]=RotatePointQuarterion(QUART,POINTS[3]);
 
 
     for(int i=0;i<3;i++)
@@ -248,9 +255,8 @@ auto CreateFace=[](const REAL4 CENTER,const std::vector<REAL4> FACE_POINTS,int f
 
 
 
-
 #include "HDF5Helper.h"
-vtkIdType McsdemReader::findClosestSolutionIndex(double Time)
+vtkIdType McdemReader::findClosestSolutionIndex(double Time)
 {
     double dt=1e24;
     vtkIdType ti=0;//time index
@@ -358,10 +364,10 @@ void AddToVTKVector(vtkFieldData *location,std::vector<REAL4>&array,std::string 
 
 
 
-vtkStandardNewMacro(McsdemReader);
+vtkStandardNewMacro(McdemReader);
 
 
-McsdemReader::McsdemReader()
+McdemReader::McdemReader()
 {
     this->FileName = nullptr;
     this->DirectoryName = nullptr;
@@ -371,7 +377,7 @@ McsdemReader::McsdemReader()
     this->timesNames = vtkSmartPointer<vtkVariantArray>::New();
 }
 
-int McsdemReader::RequestData(
+int McdemReader::RequestData(
         vtkInformation *vtkNotUsed(request),
         vtkInformationVector **vtkNotUsed(inputVector),
         vtkInformationVector *outputVector)
@@ -384,7 +390,7 @@ int McsdemReader::RequestData(
 
     std::string tempFilename=filenames[findClosestSolutionIndex(requestedTime)];
 
-    std::cout<<"McsdemReader "<<tempFilename<<"\n";
+    std::cout<<"McdemReader "<<tempFilename<<"\n";
 
 
 
@@ -429,7 +435,12 @@ int McsdemReader::RequestData(
     readDataSetREAL4(gr,ANGULAR_VELOCITY,"ANGULAR_VELOCITY",PARTICLE_COUNT);
     readDataSetREAL4(gr,QUARTERION,"QUARTERION",PARTICLE_COUNT);
     readDataSetUCHAR(gr,FIX,"FIX",PARTICLE_COUNT);
-    readDataSetREAL4(gr,POSITION,"POSITION",PARTICLE_COUNT);
+    readDataSetUCHAR(gr,MATERIAL,"MATERIAL",PARTICLE_COUNT);
+    readDataSetUCHAR(gr,WALL,"WALL",PARTICLE_COUNT);
+    readDataSetREAL(gr,RADIUS,"RADIUS",PARTICLE_COUNT);
+
+
+
 
     vtkPoints*points=vtkPoints::New();
     points->SetDataTypeToDouble();
@@ -440,12 +451,16 @@ int McsdemReader::RequestData(
 
     for(size_t idx=0;idx<PARTICLE_COUNT;idx++)
     {
+        auto QUART=QUARTERION[idx];
+       // QUART=REAL4({0.1,0,0, 0.5});
+        QUART=normalize(QUART);
+        //std::cout<<"QUART "<<QUART[0]<<" "<<QUART[1]<<" "<<QUART[2]<<" "<<QUART[3]<<"\n";
         auto face_count=FACE_COUNT[idx];
         std::vector<REAL4> F;
         F.resize(face_count);
         for(size_t i=0;i<face_count;i++)
         {
-            F[i]=FACES[idx*MAX_POSSIBLE_FACES+i];
+            F[i]=RotatePointQuarterion(QUART,FACES[idx*MAX_POSSIBLE_FACES+i]);
         }
         REAL4 CENTER=POSITION[idx];
 
@@ -456,7 +471,7 @@ int McsdemReader::RequestData(
         for(int i=0;i<face_count;i++)
         {
             int COUNT=0;
-            std::vector<REAL4> TASKAI=CreateFace(CENTER,F,F.size(),i,COUNT);
+            std::vector<REAL4> TASKAI=CreateFace(CENTER,F,F.size(),i,COUNT,QUART);
             if(COUNT<3)continue;
             dodechedronFaces->InsertNextCell(COUNT);
             for(size_t z=0;z<COUNT;z++)
@@ -472,7 +487,7 @@ int McsdemReader::RequestData(
                                face_count, dodechedronFaces->GetPointer());
     }
     output->SetPoints(points);
-
+    points->Delete();
     vtkCellData* cdata =output->GetCellData();
     vtkFieldData* fdata = output->GetFieldData();
 
@@ -537,6 +552,21 @@ int McsdemReader::RequestData(
         AddToVTKScalar(cdata,VOLUME,"VOLUME");
     }
 
+
+    if(gr.exists("PARTICLE_ID"))
+    {
+        std::vector<int> PARTICLE_ID;
+        PARTICLE_ID.resize(PARTICLE_COUNT);
+        readDataSetINT(gr,PARTICLE_ID,"PARTICLE_ID",PARTICLE_COUNT);
+        AddToVTKScalar(cdata,PARTICLE_ID,"PARTICLE_ID");
+    }
+    if(gr.exists("PARTICLE_CPU"))
+    {
+        std::vector<int> PARTICLE_CPU;
+        PARTICLE_CPU.resize(PARTICLE_COUNT);
+        readDataSetINT(gr,PARTICLE_CPU,"PARTICLE_CPU",PARTICLE_COUNT);
+        AddToVTKScalar(cdata,PARTICLE_CPU,"PARTICLE_CPU");
+    }
     cdata->SetActiveVectors("VELOCITY");
     cdata->SetActiveScalars("FIX");
 
@@ -547,7 +577,7 @@ int McsdemReader::RequestData(
     return 1;
 }
 
-void McsdemReader::PrintSelf(ostream& os, vtkIndent indent)
+void McdemReader::PrintSelf(ostream& os, vtkIndent indent)
 {
     this->Superclass::PrintSelf(os,indent);
 
@@ -571,7 +601,7 @@ std::vector<std::string> split(const std::string& str, const std::string& delim)
     return tokens;
 }
 
-int McsdemReader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInformationVector **vtkNotUsed(inputVector), vtkInformationVector *outputVector)
+int McdemReader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInformationVector **vtkNotUsed(inputVector), vtkInformationVector *outputVector)
 {
     if (!this->FileName || strlen(this->FileName) == 0)
     {
@@ -584,7 +614,7 @@ int McsdemReader::RequestInformation(vtkInformation *vtkNotUsed(request), vtkInf
 
     for(auto& p: fs::directory_iterator(fs::path(FileName).parent_path()))
     {
-        if (p.path().string().find(".mcsdem") != std::string::npos)
+        if (p.path().string().find(".mcdem") != std::string::npos)
             if (p.path().string().find(fileStringStart) != std::string::npos) {
 
                 filenames.push_back(p.path().string());

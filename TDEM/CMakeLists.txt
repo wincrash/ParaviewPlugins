@@ -1,0 +1,5 @@
+
+ADD_PARAVIEW_PLUGIN(TDEM "1.0"
+SERVER_MANAGER_XML TDEM_Server.xml
+SERVER_MANAGER_SOURCES TDEM.cxx)
+target_link_libraries(TDEM LINK_PRIVATE vtksys  -lstdc++fs ${HDF5_LIBRARIES} -lhdf5_cpp  )

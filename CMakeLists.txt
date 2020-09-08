@@ -21,4 +21,5 @@ add_subdirectory("HDF5ReaderBonds")
 add_subdirectory("HDF5ReaderTetraConvex")
 add_subdirectory("HDF5ReaderTetraBonds")
 
-add_subdirectory("McsdemReader")
+add_subdirectory("McdemReader")
+add_subdirectory("TDEM")

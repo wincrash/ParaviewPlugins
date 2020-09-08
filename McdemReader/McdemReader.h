@@ -1,5 +1,5 @@
-#ifndef __McsdemReader_h
-#define __McsdemReader_h
+#ifndef __McdemReader_h
+#define __McdemReader_h
 
 #include "vtkUnstructuredGridAlgorithm.h"
 #include <vtksys/RegularExpression.hxx>
@@ -12,13 +12,13 @@
 
 
 
-class McsdemReader : public vtkUnstructuredGridAlgorithm
+class McdemReader : public vtkUnstructuredGridAlgorithm
 {
 public:
-    vtkTypeMacro(McsdemReader,vtkUnstructuredGridAlgorithm)
+    vtkTypeMacro(McdemReader,vtkUnstructuredGridAlgorithm)
     void PrintSelf(ostream& os, vtkIndent indent);
 
-    static McsdemReader *New();
+    static McdemReader *New();
 
     // Description:
     // Specify file name of the .abc file.
@@ -31,8 +31,8 @@ public:
     }
     vtkGetStringMacro(DirectoryName)
 protected:
-    McsdemReader();
-    ~McsdemReader(){}
+    McdemReader();
+    ~McdemReader(){}
 
     int RequestData(vtkInformation *, vtkInformationVector **, vtkInformationVector *);
     int RequestInformation(vtkInformation *vtkNotUsed(request), vtkInformationVector **vtkNotUsed(inputVector), vtkInformationVector *outputVector);
@@ -40,8 +40,8 @@ protected:
 
 private:
     vtkIdType findClosestSolutionIndex(double Time);
-    McsdemReader(const McsdemReader&);  // Not implemented.
-    void operator=(const McsdemReader&);  // Not implemented.
+    McdemReader(const McdemReader&);  // Not implemented.
+    void operator=(const McdemReader&);  // Not implemented.
 
     char* FileName;
     char* DirectoryName;
